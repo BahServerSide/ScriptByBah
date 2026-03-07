@@ -1,11 +1,17 @@
+--[[
+    FLY HD ADMIN - INTEGRATED VERSION
+    - Smooth Dragging (Tween System)
+    - Advanced Fly (Tilt, Camera-Based, ControlModule)
+    - High Speed Limit & "inf" support
+]]
+
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
-local CollectionService = game:GetService("CollectionService")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 
--- Variáveis do Fly
+-- Variáveis de Configuração do Fly
 local flyEnabled = false
 local flying = false
 local flySpeed = 50
@@ -13,100 +19,321 @@ local acceleration = 6
 local rotationSmoothness = 4
 local bodyVelocity, bodyGyro, flyConnection
 local lastLookDirection = Vector3.new(0, 0, 0)
-local firstActivation = true
+local MAX_SPEED = 100000000000
 
--- Criar interface personalizada
-local G2L = {}
+local LMG2L = {}
 
--- ScreenGui
-G2L["ScreenGui_1"] = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-G2L["ScreenGui_1"]["ZIndexBehavior"] = Enum.ZIndexBehavior.Sibling
-G2L["ScreenGui_1"].ResetOnSpawn = false
-CollectionService:AddTag(G2L["ScreenGui_1"], "main")
+-----------------------------------------------------------
+-- CONSTRUÇÃO DA INTERFACE (GUI)
+-----------------------------------------------------------
 
--- Frame principal
-local mainFrame = Instance.new("Frame", G2L["ScreenGui_1"])
-mainFrame.BackgroundColor3 = Color3.fromRGB(41, 41, 41)
-mainFrame.Size = UDim2.new(0, 196, 0, 130)
-mainFrame.Position = UDim2.new(0, 306, 0, 84)
-mainFrame.BackgroundTransparency = 0.2
-Instance.new("UICorner", mainFrame)
+LMG2L["ScreenGui_1"] = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+LMG2L["ScreenGui_1"]["ZIndexBehavior"] = Enum.ZIndexBehavior.Sibling
+LMG2L["ScreenGui_1"]["ResetOnSpawn"] = false
 
--- Adicionar UIDragDetector corretamente
-local dragDetector = Instance.new("TextButton", mainFrame)
-dragDetector.Size = UDim2.new(1, 0, 0, 26)
-dragDetector.Position = UDim2.new(0, 0, 0, 0)
-dragDetector.BackgroundTransparency = 1
-dragDetector.Text = ""
-dragDetector.ZIndex = 2
+-- Frame Principal
+LMG2L["Frame_2"] = Instance.new("Frame", LMG2L["ScreenGui_1"])
+LMG2L["Frame_2"]["BorderSizePixel"] = 0
+LMG2L["Frame_2"]["BackgroundColor3"] = Color3.fromRGB(0, 0, 0)
+LMG2L["Frame_2"]["Size"] = UDim2.new(0, 218, 0, 126)
+LMG2L["Frame_2"]["Position"] = UDim2.new(0, 308, 0, 86)
+LMG2L["Frame_2"]["BackgroundTransparency"] = 0.55
+LMG2L["Frame_2"]["ClipsDescendants"] = true
 
--- Cabeçalho
-local header = Instance.new("TextLabel", mainFrame)
-header.BackgroundColor3 = Color3.fromRGB(162, 8, 255)
-header.Text = "FLY"
-header.Size = UDim2.new(0, 196, 0, 26)
-header.TextSize = 18
-header.TextXAlignment = Enum.TextXAlignment.Left
-header.TextColor3 = Color3.fromRGB(0, 0, 0)
-header.Font = Enum.Font.SourceSansBold
-Instance.new("UICorner", header).CornerRadius = UDim.new(0, 2)
+-- Title Bar (Laranja)
+LMG2L["Frame_3"] = Instance.new("Frame", LMG2L["Frame_2"])
+LMG2L["Frame_3"]["BorderSizePixel"] = 0
+LMG2L["Frame_3"]["BackgroundColor3"] = Color3.fromRGB(255, 67, 9)
+LMG2L["Frame_3"]["Size"] = UDim2.new(0, 218, 0, 20)
 
--- Botão Minimizar dentro do cabeçalho
-local minimizeButton = Instance.new("TextButton", header)
-minimizeButton.Size = UDim2.new(0, 24, 0, 20)
-minimizeButton.Position = UDim2.new(1, -28, 0, 3)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(192, 0, 255)
-minimizeButton.BackgroundTransparency = 0.15
-minimizeButton.Text = "-"
-minimizeButton.TextSize = 18
-minimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-minimizeButton.Font = Enum.Font.SourceSansBold
-Instance.new("UICorner", minimizeButton).CornerRadius = UDim.new(0, 3)
+-- Título
+LMG2L["TextLabel_4"] = Instance.new("TextLabel", LMG2L["Frame_3"])
+LMG2L["TextLabel_4"]["TextSize"] = 18
+LMG2L["TextLabel_4"]["FontFace"] = Font.new([[rbxasset://fonts/families/GothamSSm.json]], Enum.FontWeight.Heavy, Enum.FontStyle.Normal)
+LMG2L["TextLabel_4"]["TextColor3"] = Color3.fromRGB(255, 255, 255)
+LMG2L["TextLabel_4"]["BackgroundTransparency"] = 1
+LMG2L["TextLabel_4"]["Size"] = UDim2.new(0, 112, 0, 6)
+LMG2L["TextLabel_4"]["Text"] = [[Fly HD Admin]]
+LMG2L["TextLabel_4"]["Position"] = UDim2.new(0, 18, 0, 8)
 
--- Botão Toggle Fly
-local toggleButton = Instance.new("TextButton", mainFrame)
-toggleButton.Size = UDim2.new(0, 146, 0, 30)
-toggleButton.Position = UDim2.new(0, 22, 0, 42)
-toggleButton.Text = "ENABLE"
-toggleButton.TextSize = 14
-toggleButton.TextColor3 = Color3.fromRGB(0, 0, 0)
-toggleButton.BackgroundColor3 = Color3.fromRGB(144, 0, 255)
-toggleButton.Font = Enum.Font.SourceSansBold
-Instance.new("UICorner", toggleButton)
+-- Botões de Controle (X e -)
+LMG2L["ImageButton_5"] = Instance.new("ImageButton", LMG2L["Frame_3"]) -- Fechar
+LMG2L["ImageButton_5"]["BackgroundTransparency"] = 1
+LMG2L["ImageButton_5"]["Image"] = [[rbxassetid://110786993356448]]
+LMG2L["ImageButton_5"]["Size"] = UDim2.new(0, 20, 0, 20)
+LMG2L["ImageButton_5"]["Position"] = UDim2.new(0, 196, 0, 0)
 
--- Label Speed
-local speedLabel = Instance.new("TextLabel", mainFrame)
-speedLabel.Text = "Speed"
-speedLabel.Size = UDim2.new(0, 76, 0, 24)
-speedLabel.Position = UDim2.new(0, 26, 0, 90)
-speedLabel.TextSize = 18
-speedLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedLabel.BackgroundTransparency = 1
+LMG2L["ImageButton_6"] = Instance.new("ImageButton", LMG2L["Frame_3"]) -- Minimizar
+LMG2L["ImageButton_6"]["BackgroundTransparency"] = 1
+LMG2L["ImageButton_6"]["Image"] = [[rbxassetid://116269596042539]]
+LMG2L["ImageButton_6"]["Size"] = UDim2.new(0, 22, 0, 20)
+LMG2L["ImageButton_6"]["Position"] = UDim2.new(0, 172, 0, 0)
 
--- TextBox Speed
-local speedTextBox = Instance.new("TextBox", mainFrame)
-speedTextBox.Size = UDim2.new(0, 50, 0, 26)
-speedTextBox.Position = UDim2.new(0, 120, 0, 90)
-speedTextBox.Text = tostring(flySpeed)
-speedTextBox.TextSize = 14
-speedTextBox.TextColor3 = Color3.fromRGB(255, 255, 255)
-speedTextBox.BackgroundColor3 = Color3.fromRGB(131, 0, 187)
-speedTextBox.BackgroundTransparency = 0.19
+-- Botão ON/OFF
+LMG2L["TextButton_7"] = Instance.new("TextButton", LMG2L["Frame_2"])
+LMG2L["TextButton_7"]["TextSize"] = 14
+LMG2L["TextButton_7"]["TextColor3"] = Color3.fromRGB(255, 255, 255)
+LMG2L["TextButton_7"]["BackgroundColor3"] = Color3.fromRGB(255, 108, 56)
+LMG2L["TextButton_7"]["FontFace"] = Font.new([[rbxasset://fonts/families/GothamSSm.json]], Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+LMG2L["TextButton_7"]["Size"] = UDim2.new(0, 184, 0, 20)
+LMG2L["TextButton_7"]["Text"] = [[Off]]
+LMG2L["TextButton_7"]["Position"] = UDim2.new(0, 16, 0, 34)
 
--- Variável minimizar
+-- Speed UI
+LMG2L["Frame_8"] = Instance.new("Frame", LMG2L["TextButton_7"])
+LMG2L["Frame_8"]["BackgroundColor3"] = Color3.fromRGB(0, 0, 0)
+LMG2L["Frame_8"]["Size"] = UDim2.new(0, 184, 0, 36)
+LMG2L["Frame_8"]["Position"] = UDim2.new(0, 0, 0, 30)
+LMG2L["Frame_8"]["BackgroundTransparency"] = 0.88
+
+LMG2L["TextLabel_9"] = Instance.new("TextLabel", LMG2L["Frame_8"])
+LMG2L["TextLabel_9"]["TextSize"] = 24
+LMG2L["TextLabel_9"]["FontFace"] = Font.new([[rbxasset://fonts/families/SourceSansPro.json]], Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+LMG2L["TextLabel_9"]["Text"] = [[Speed]]
+LMG2L["TextLabel_9"]["TextColor3"] = Color3.fromRGB(255, 255, 255)
+LMG2L["TextLabel_9"]["BackgroundTransparency"] = 1
+LMG2L["TextLabel_9"]["Size"] = UDim2.new(0, 108, 0, 10)
+LMG2L["TextLabel_9"]["Position"] = UDim2.new(0, 8, 0, 14)
+
+LMG2L["TextBox_a"] = Instance.new("TextBox", LMG2L["TextButton_7"])
+LMG2L["TextBox_a"]["TextSize"] = 14
+LMG2L["TextBox_a"]["TextColor3"] = Color3.fromRGB(255, 255, 255)
+LMG2L["TextBox_a"]["TextScaled"] = true
+LMG2L["TextBox_a"]["BackgroundColor3"] = Color3.fromRGB(255, 255, 255)
+LMG2L["TextBox_a"]["FontFace"] = Font.new([[rbxasset://fonts/families/GothamSSm.json]], Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+LMG2L["TextBox_a"]["Size"] = UDim2.new(0, 60, 0, 22)
+LMG2L["TextBox_a"]["Position"] = UDim2.new(0, 118, 0, 38)
+LMG2L["TextBox_a"]["Text"] = tostring(flySpeed)
+LMG2L["TextBox_a"]["BackgroundTransparency"] = 0.88
+
+-----------------------------------------------------------
+-- SISTEMA DE ARRASTAR SUAVE (TWEEN)
+-----------------------------------------------------------
+
+local function applySoftDrag(frame)
+    local dragging = false
+    local dragInput, dragStart, startPos
+    local tweenSpeed = 0.15 
+
+    frame.Active = true
+    frame.Selectable = true
+
+    local function update(input)
+        if not dragging then return end
+        local delta = input.Position - dragStart
+        local newPos = UDim2.new(
+            startPos.X.Scale,
+            startPos.X.Offset + delta.X,
+            startPos.Y.Scale,
+            startPos.Y.Offset + delta.Y
+        )
+        TweenService:Create(frame, TweenInfo.new(tweenSpeed, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+            Position = newPos
+        }):Play()
+    end
+
+    frame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+
+    frame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+            dragInput = input
+        end
+    end)
+
+    UserInputService.InputChanged:Connect(function(input)
+        if input == dragInput and dragging then
+            update(input)
+        end
+    end)
+end
+
+applySoftDrag(LMG2L["Frame_2"])
+
+-----------------------------------------------------------
+-- ADVANCED FLIGHT SYSTEM (ENGINE)
+-----------------------------------------------------------
+
+local function getCharacter() return player.Character or player.CharacterAdded:Wait() end
+local function getRootPart() return getCharacter():FindFirstChild("HumanoidRootPart") end
+
+local function enableNoclip()
+    local char = getCharacter()
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") then part.CanCollide = false end
+    end
+end
+
+local function waitForControlModule()
+    local playerModule = player:WaitForChild("PlayerScripts"):WaitForChild("PlayerModule")
+    return require(playerModule):GetControls()
+end
+
+local function getInputVector(controlModule)
+    if controlModule then
+        local success, controlVector = pcall(function() return controlModule:GetMoveVector() end)
+        if success and controlVector and controlVector.Magnitude > 0.05 then
+            return controlVector
+        end
+    end
+    local humanoid = getCharacter():FindFirstChildOfClass("Humanoid")
+    if humanoid and humanoid.MoveDirection.Magnitude > 0.05 then
+        return humanoid.MoveDirection
+    end
+    return Vector3.new(0, 0, 0)
+end
+
+local function stopFly()
+    flying = false
+    if bodyVelocity then bodyVelocity:Destroy(); bodyVelocity = nil end
+    if bodyGyro then bodyGyro:Destroy(); bodyGyro = nil end
+    if flyConnection then flyConnection:Disconnect(); flyConnection = nil end
+    local hum = getCharacter():FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = false end
+    
+    -- Restaurar colisão
+    local char = getCharacter()
+    for _, part in ipairs(char:GetDescendants()) do
+        if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
+            part.CanCollide = true
+        end
+    end
+end
+
+local function startFly()
+    local root = getRootPart()
+    if not root then return end
+    stopFly()
+    flying = true
+
+    bodyVelocity = Instance.new("BodyVelocity", root)
+    bodyVelocity.Velocity = Vector3.zero
+    bodyVelocity.MaxForce = Vector3.new(9e9, 9e9, 9e9)
+
+    bodyGyro = Instance.new("BodyGyro", root)
+    bodyGyro.MaxTorque = Vector3.new(9e9, 9e9, 9e9)
+    bodyGyro.P = 5000
+    bodyGyro.D = 500
+
+    local hum = getCharacter():FindFirstChildOfClass("Humanoid")
+    if hum then hum.PlatformStand = true end
+
+    local controlModule = waitForControlModule()
+    local camera = workspace.CurrentCamera
+    lastLookDirection = camera.CFrame.LookVector
+
+    flyConnection = RunService.Heartbeat:Connect(function(dt)
+        if not flyEnabled or not flying then return end
+        
+        local moveVec = getInputVector(controlModule)
+        local targetVelocity = Vector3.zero
+        
+        -- Movimento baseado na câmera
+        if moveVec.Magnitude > 0 then
+            local cameraCFrame = camera.CFrame
+            local worldMoveVector = cameraCFrame:VectorToWorldSpace(moveVec)
+            targetVelocity = worldMoveVector.Unit * flySpeed
+        end
+
+        -- Subir/Descer
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
+            targetVelocity = targetVelocity + Vector3.new(0, flySpeed, 0)
+        elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
+            targetVelocity = targetVelocity + Vector3.new(0, -flySpeed, 0)
+        end
+
+        -- Aplicação suave
+        bodyVelocity.Velocity = bodyVelocity.Velocity:Lerp(targetVelocity, math.clamp(dt * acceleration, 0, 1))
+        
+        -- Rotação e Inclinação (Tilt)
+        local currentLook = camera.CFrame.LookVector
+        local smoothedLook = lastLookDirection:Lerp(currentLook, math.clamp(dt * rotationSmoothness, 0, 1))
+        lastLookDirection = smoothedLook
+        
+        local targetCFrame = CFrame.lookAt(root.Position, root.Position + smoothedLook)
+        
+        -- Efeito de inclinação ao mover
+        if bodyVelocity.Velocity.Magnitude > 5 then
+            local moveDir = bodyVelocity.Velocity.Unit
+            local cameraLook = camera.CFrame.LookVector
+            local forwardAmount = moveDir:Dot(cameraLook)
+            local pitch = math.clamp(-forwardAmount * 0.5, -0.7, 0.7)
+            targetCFrame = targetCFrame * CFrame.Angles(pitch, 0, 0)
+        end
+
+        bodyGyro.CFrame = bodyGyro.CFrame:Lerp(targetCFrame, math.clamp(dt * rotationSmoothness, 0, 1))
+        enableNoclip()
+    end)
+end
+
+-----------------------------------------------------------
+-- EVENTOS DOS BOTÕES E LÓGICA FINAL
+-----------------------------------------------------------
+
+-- Fechar GUI
+LMG2L["ImageButton_5"].MouseButton1Click:Connect(function()
+    TweenService:Create(LMG2L["Frame_2"], TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.new(0,0,0,0)}):Play()
+    task.wait(0.3)
+    LMG2L["ScreenGui_1"]:Destroy()
+    stopFly()
+end)
+
+-- Minimizar GUI
 local isMinimized = false
-local originalSize = mainFrame.Size
+LMG2L["ImageButton_6"].MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    local target = isMinimized and UDim2.new(0, 218, 0, 20) or UDim2.new(0, 218, 0, 126)
+    TweenService:Create(LMG2L["Frame_2"], TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Size = target}):Play()
+end)
 
--- Lista para armazenar os elementos que serão escondidos
-local elementsToHide = {toggleButton, speedLabel, speedTextBox}
+-- Toggle Fly
+LMG2L["TextButton_7"].MouseButton1Click:Connect(function()
+    flyEnabled = not flyEnabled
+    if flyEnabled then
+        LMG2L["TextButton_7"].Text = "On"
+        LMG2L["TextButton_7"].BackgroundColor3 = Color3.fromRGB(255, 108, 56) -- Laranja ao desligar
+        startFly()
+    else
+        LMG2L["TextButton_7"].Text = "Off"
+        LMG2L["TextButton_7"].BackgroundColor3 = Color3.fromRGB(255, 108, 56) -- Laranja ao desligar
+        stopFly()
+    end
+end)
 
--- Interface da mensagem do Bah
--- Players.maykon_adm.PlayerGui.ScreenGui.Frame
-G2L["Frame_2"] = Instance.new("Frame", G2L["ScreenGui_1"])
-G2L["Frame_2"]["BorderSizePixel"] = 0
-G2L["Frame_2"]["BackgroundColor3"] = Color3.fromRGB(0, 0, 0)
-G2L["Frame_2"]["Size"] = UDim2.new(0, 196, 0, 100)
--- Posição inicial: fora da tela (embaixo e à direita)
+-- TextBox Speed (inf ou números gigantes)
+LMG2L["TextBox_a"].FocusLost:Connect(function()
+    local text = LMG2L["TextBox_a"].Text:lower()
+    if text == "inf" then
+        flySpeed = MAX_SPEED
+        LMG2L["TextBox_a"].Text = "inf"
+    else
+        local num = tonumber(text)
+        if num then
+            flySpeed = math.min(num, MAX_SPEED)
+            LMG2L["TextBox_a"].Text = tostring(flySpeed)
+        else
+            LMG2L["TextBox_a"].Text = tostring(flySpeed)
+        end
+    end
+end)
+
+-- Reaplicar fly se morrer e estiver ligado
+player.CharacterAdded:Connect(function()
+    task.wait(1)
+    if flyEnabled then startFly() end
+end)
+
+return LMG2L["ScreenGui_1"]
 G2L["Frame_2"]["Position"] = UDim2.new(1, 50, 1, 50)
 G2L["Frame_2"]["BackgroundTransparency"] = 0.19
 
