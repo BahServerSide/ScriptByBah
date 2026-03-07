@@ -11,7 +11,7 @@ local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 
--- Variáveis de Configuração do Fly
+-- Fly Configuration Variables
 local flyEnabled = false
 local flying = false
 local flySpeed = 50
@@ -24,58 +24,58 @@ local MAX_SPEED = 100000000000
 local LMG2L = {}
 
 -----------------------------------------------------------
--- CONSTRUÇÃO DA INTERFACE (GUI)
+-- GUI (User Interface) Construction
 -----------------------------------------------------------
 
 LMG2L["ScreenGui_1"] = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
 LMG2L["ScreenGui_1"]["ZIndexBehavior"] = Enum.ZIndexBehavior.Sibling
 LMG2L["ScreenGui_1"]["ResetOnSpawn"] = false
 
--- Frame Principal
+-- Main Frame
 LMG2L["Frame_2"] = Instance.new("Frame", LMG2L["ScreenGui_1"])
 LMG2L["Frame_2"]["BorderSizePixel"] = 0
 LMG2L["Frame_2"]["BackgroundColor3"] = Color3.fromRGB(0, 0, 0)
-LMG2L["Frame_2"]["Size"] = UDim2.new(0, 218, 0, 126)
+LMG2L["Frame_2"]["Size"] = UDim2.new(0, 218, 0, 106)
 LMG2L["Frame_2"]["Position"] = UDim2.new(0, 308, 0, 86)
 LMG2L["Frame_2"]["BackgroundTransparency"] = 0.55
 LMG2L["Frame_2"]["ClipsDescendants"] = true
 
--- Title Bar (Laranja)
+-- Title Bar (Orange)
 LMG2L["Frame_3"] = Instance.new("Frame", LMG2L["Frame_2"])
 LMG2L["Frame_3"]["BorderSizePixel"] = 0
 LMG2L["Frame_3"]["BackgroundColor3"] = Color3.fromRGB(255, 67, 9)
-LMG2L["Frame_3"]["Size"] = UDim2.new(0, 218, 0, 20)
+LMG2L["Frame_3"]["Size"] = UDim2.new(0, 218, 0, 23)
 
--- Título
+-- Title
 LMG2L["TextLabel_4"] = Instance.new("TextLabel", LMG2L["Frame_3"])
 LMG2L["TextLabel_4"]["TextSize"] = 18
 LMG2L["TextLabel_4"]["FontFace"] = Font.new([[rbxasset://fonts/families/GothamSSm.json]], Enum.FontWeight.Heavy, Enum.FontStyle.Normal)
 LMG2L["TextLabel_4"]["TextColor3"] = Color3.fromRGB(255, 255, 255)
 LMG2L["TextLabel_4"]["BackgroundTransparency"] = 1
-LMG2L["TextLabel_4"]["Size"] = UDim2.new(0, 112, 0, 6)
+LMG2L["TextLabel_4"]["Size"] = UDim2.new(0, 80, 0, 6)
 LMG2L["TextLabel_4"]["Text"] = [[Fly HD Admin]]
 LMG2L["TextLabel_4"]["Position"] = UDim2.new(0, 18, 0, 8)
 
--- Botões de Controle (X e -)
+-- Control Buttons (X and -)
 LMG2L["ImageButton_5"] = Instance.new("ImageButton", LMG2L["Frame_3"]) -- Fechar
 LMG2L["ImageButton_5"]["BackgroundTransparency"] = 1
 LMG2L["ImageButton_5"]["Image"] = [[rbxassetid://110786993356448]]
-LMG2L["ImageButton_5"]["Size"] = UDim2.new(0, 20, 0, 20)
+LMG2L["ImageButton_5"]["Size"] = UDim2.new(0, 20, 0, 21)
 LMG2L["ImageButton_5"]["Position"] = UDim2.new(0, 196, 0, 0)
 
 LMG2L["ImageButton_6"] = Instance.new("ImageButton", LMG2L["Frame_3"]) -- Minimizar
 LMG2L["ImageButton_6"]["BackgroundTransparency"] = 1
 LMG2L["ImageButton_6"]["Image"] = [[rbxassetid://116269596042539]]
-LMG2L["ImageButton_6"]["Size"] = UDim2.new(0, 22, 0, 20)
+LMG2L["ImageButton_6"]["Size"] = UDim2.new(0, 20, 0, 21)
 LMG2L["ImageButton_6"]["Position"] = UDim2.new(0, 172, 0, 0)
 
--- Botão ON/OFF
+-- ON/OFF button
 LMG2L["TextButton_7"] = Instance.new("TextButton", LMG2L["Frame_2"])
 LMG2L["TextButton_7"]["TextSize"] = 14
 LMG2L["TextButton_7"]["TextColor3"] = Color3.fromRGB(255, 255, 255)
 LMG2L["TextButton_7"]["BackgroundColor3"] = Color3.fromRGB(255, 108, 56)
 LMG2L["TextButton_7"]["FontFace"] = Font.new([[rbxasset://fonts/families/GothamSSm.json]], Enum.FontWeight.Bold, Enum.FontStyle.Normal)
-LMG2L["TextButton_7"]["Size"] = UDim2.new(0, 184, 0, 20)
+LMG2L["TextButton_7"]["Size"] = UDim2.new(0, 184, 0, 25)
 LMG2L["TextButton_7"]["Text"] = [[Off]]
 LMG2L["TextButton_7"]["Position"] = UDim2.new(0, 16, 0, 34)
 
@@ -107,7 +107,7 @@ LMG2L["TextBox_a"]["Text"] = tostring(flySpeed)
 LMG2L["TextBox_a"]["BackgroundTransparency"] = 0.88
 
 -----------------------------------------------------------
--- SISTEMA DE ARRASTAR SUAVE (TWEEN)
+-- SMOOTH DRAG SYSTEM (TWEEN)
 -----------------------------------------------------------
 
 local function applySoftDrag(frame)
@@ -201,7 +201,7 @@ local function stopFly()
     local hum = getCharacter():FindFirstChildOfClass("Humanoid")
     if hum then hum.PlatformStand = false end
     
-    -- Restaurar colisão
+    -- Restore collision
     local char = getCharacter()
     for _, part in ipairs(char:GetDescendants()) do
         if part:IsA("BasePart") and part.Name ~= "HumanoidRootPart" then
@@ -238,31 +238,31 @@ local function startFly()
         local moveVec = getInputVector(controlModule)
         local targetVelocity = Vector3.zero
         
-        -- Movimento baseado na câmera
+        -- Camera-based movement
         if moveVec.Magnitude > 0 then
             local cameraCFrame = camera.CFrame
             local worldMoveVector = cameraCFrame:VectorToWorldSpace(moveVec)
             targetVelocity = worldMoveVector.Unit * flySpeed
         end
 
-        -- Subir/Descer
+        -- Go up/Go down
         if UserInputService:IsKeyDown(Enum.KeyCode.Space) then
             targetVelocity = targetVelocity + Vector3.new(0, flySpeed, 0)
         elseif UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then
             targetVelocity = targetVelocity + Vector3.new(0, -flySpeed, 0)
         end
 
-        -- Aplicação suave
+        -- Smooth application
         bodyVelocity.Velocity = bodyVelocity.Velocity:Lerp(targetVelocity, math.clamp(dt * acceleration, 0, 1))
         
-        -- Rotação e Inclinação (Tilt)
+        -- Rotation and Tilt
         local currentLook = camera.CFrame.LookVector
         local smoothedLook = lastLookDirection:Lerp(currentLook, math.clamp(dt * rotationSmoothness, 0, 1))
         lastLookDirection = smoothedLook
         
         local targetCFrame = CFrame.lookAt(root.Position, root.Position + smoothedLook)
         
-        -- Efeito de inclinação ao mover
+        -- Tilt effect when moving
         if bodyVelocity.Velocity.Magnitude > 5 then
             local moveDir = bodyVelocity.Velocity.Unit
             local cameraLook = camera.CFrame.LookVector
@@ -277,10 +277,10 @@ local function startFly()
 end
 
 -----------------------------------------------------------
--- EVENTOS DOS BOTÕES E LÓGICA FINAL
+-- BUTTON EVENTS AND FINAL LOGIC
 -----------------------------------------------------------
 
--- Fechar GUI
+-- Close GUI
 LMG2L["ImageButton_5"].MouseButton1Click:Connect(function()
     TweenService:Create(LMG2L["Frame_2"], TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {Size = UDim2.new(0,0,0,0)}):Play()
     task.wait(0.3)
@@ -288,11 +288,11 @@ LMG2L["ImageButton_5"].MouseButton1Click:Connect(function()
     stopFly()
 end)
 
--- Minimizar GUI
+-- Minimize GUI
 local isMinimized = false
 LMG2L["ImageButton_6"].MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
-    local target = isMinimized and UDim2.new(0, 218, 0, 20) or UDim2.new(0, 218, 0, 126)
+    local target = isMinimized and UDim2.new(0, 218, 0, 20) or UDim2.new(0, 218, 0, 106)
     TweenService:Create(LMG2L["Frame_2"], TweenInfo.new(0.3, Enum.EasingStyle.Quart), {Size = target}):Play()
 end)
 
@@ -301,16 +301,16 @@ LMG2L["TextButton_7"].MouseButton1Click:Connect(function()
     flyEnabled = not flyEnabled
     if flyEnabled then
         LMG2L["TextButton_7"].Text = "On"
-        LMG2L["TextButton_7"].BackgroundColor3 = Color3.fromRGB(255, 108, 56) -- Laranja ao desligar
+        LMG2L["TextButton_7"].BackgroundColor3 = Color3.fromRGB(255, 108, 56) -- Orange when switching off
         startFly()
     else
         LMG2L["TextButton_7"].Text = "Off"
-        LMG2L["TextButton_7"].BackgroundColor3 = Color3.fromRGB(255, 108, 56) -- Laranja ao desligar
+        LMG2L["TextButton_7"].BackgroundColor3 = Color3.fromRGB(255, 108, 56) -- Orange when switching off
         stopFly()
     end
 end)
 
--- TextBox Speed (inf ou números gigantes)
+-- TextBox Speed (info or giant numbers)
 LMG2L["TextBox_a"].FocusLost:Connect(function()
     local text = LMG2L["TextBox_a"].Text:lower()
     if text == "inf" then
@@ -327,7 +327,7 @@ LMG2L["TextBox_a"].FocusLost:Connect(function()
     end
 end)
 
--- Reaplicar fly se morrer e estiver ligado
+-- Reapply fly if it dies and is connected.
 player.CharacterAdded:Connect(function()
     task.wait(1)
     if flyEnabled then startFly() end
