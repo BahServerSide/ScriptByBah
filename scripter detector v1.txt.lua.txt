@@ -1,0 +1,426 @@
+--[[
+    scripter detector v1- Anti-Cheat Visual
+    LocalScript → StarterPlayerScripts
+    by Claude and modified by Bah
+]]
+
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui   = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ══════════════════════════════════════════
+--  ASSETS
+-- ══════════════════════════════════════════
+local ICONS = {
+    username   = "rbxassetid://136485052187963",
+    display    = "rbxassetid://108155244324878",
+    studs      = "rbxassetid://121615540167909",
+    normal     = "rbxassetid://115320390907184",
+    analisando = "rbxassetid://112148279212860",
+    scripter   = "rbxassetid://125920361880643",
+    off        = "rbxassetid://118026365011536",
+    on         = "rbxassetid://110786993356448",
+    logo       = "rbxassetid://121018724060431",
+}
+
+-- ══════════════════════════════════════════
+--  DETECTION SETTINGS
+-- ══════════════════════════════════════════
+local CONFIG = {
+    SPEED_MULTIPLIER  = 1.6,
+    MAX_AIR_TIME      = 2.8,
+    FLING_THRESHOLD   = 180,
+    JUMP_MULTIPLIER   = 1.5,
+    CHECK_INTERVAL    = 0.4,
+}
+
+-- ══════════════════════════════════════════
+--  HELPER: ImageLabel transparente
+-- ══════════════════════════════════════════
+local function makeIcon(parent, assetId, size, posX, posY, zIndex)
+    local img = Instance.new("ImageLabel")
+    img.Size                  = UDim2.new(0, size, 0, size)
+    img.Position              = UDim2.new(0, posX, 0, posY)
+    img.BackgroundTransparency = 1
+    img.Image                 = assetId
+    img.ScaleType             = Enum.ScaleType.Fit
+    img.ZIndex                = zIndex or 2
+    img.Parent                = parent
+    return img
+end
+
+-- Helper: line with icon + TextLabel
+local function makeIconRow(parent, assetId, text, posY, iconSize, textSize, zIndex)
+    iconSize = iconSize or 16
+    textSize = textSize or 12
+    zIndex   = zIndex or 2
+
+    local container = Instance.new("Frame")
+    container.Size                  = UDim2.new(1, -14, 0, iconSize)
+    container.Position              = UDim2.new(0, 10, 0, posY)
+    container.BackgroundTransparency = 1
+    container.ZIndex                = zIndex
+    container.Parent                = parent
+
+    makeIcon(container, assetId, iconSize, 0, 0, zIndex)
+
+    local lbl = Instance.new("TextLabel")
+    lbl.Size             = UDim2.new(1, -(iconSize + 6), 1, 0)
+    lbl.Position         = UDim2.new(0, iconSize + 6, 0, 0)
+    lbl.BackgroundTransparency = 1
+    lbl.Text             = text
+    lbl.TextColor3       = Color3.fromRGB(200, 200, 200)
+    lbl.TextSize         = textSize
+    lbl.Font             = Enum.Font.Gotham
+    lbl.TextXAlignment   = Enum.TextXAlignment.Left
+    lbl.TextTruncate     = Enum.TextTruncate.AtEnd
+    lbl.ZIndex           = zIndex
+    lbl.Parent           = container
+
+    return container, lbl
+end
+
+-- ══════════════════════════════════════════
+--  GUI
+-- ══════════════════════════════════════════
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name             = "ScripterDetectorV1"
+ScreenGui.ZIndexBehavior   = Enum.ZIndexBehavior.Sibling
+ScreenGui.ResetOnSpawn     = false
+ScreenGui.IgnoreGuiInset   = true
+ScreenGui.Parent           = PlayerGui
+
+-- Main Frame
+local MainFrame = Instance.new("Frame")
+MainFrame.Name             = "MainFrame"
+MainFrame.Size             = UDim2.new(0, 280, 0, 340)
+MainFrame.Position         = UDim2.new(0.01, 0, 0.01, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+MainFrame.BorderSizePixel  = 0
+MainFrame.Active           = true
+MainFrame.ClipsDescendants = true
+MainFrame.Parent           = ScreenGui
+Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, 8)
+
+-- title bar
+local TitleBar = Instance.new("Frame")
+TitleBar.Name             = "TitleBar"
+TitleBar.Size             = UDim2.new(1, 0, 0, 36)
+TitleBar.BackgroundColor3 = Color3.fromRGB(36, 36, 46)
+TitleBar.BorderSizePixel  = 0
+TitleBar.ZIndex           = 2
+TitleBar.Parent           = MainFrame
+Instance.new("UICorner", TitleBar).CornerRadius = UDim.new(0, 8)
+
+-- Logo
+makeIcon(TitleBar, ICONS.logo, 24, 6, 6, 3)
+
+local TitleLabel = Instance.new("TextLabel")
+TitleLabel.Size                  = UDim2.new(1, -110, 1, 0)
+TitleLabel.Position              = UDim2.new(0, 36, 0, 0)
+TitleLabel.BackgroundTransparency = 1
+TitleLabel.Text                  = "scripter detector v1"
+TitleLabel.TextColor3            = Color3.fromRGB(220, 220, 220)
+TitleLabel.TextSize              = 13
+TitleLabel.Font                  = Enum.Font.GothamBold
+TitleLabel.TextXAlignment        = Enum.TextXAlignment.Left
+TitleLabel.ZIndex                = 3
+TitleLabel.Parent                = TitleBar
+
+-- Toggle button with ImageLabel
+local ToggleBtn = Instance.new("TextButton")
+ToggleBtn.Size               = UDim2.new(0, 44, 0, 26)
+ToggleBtn.Position           = UDim2.new(1, -50, 0.5, -13)
+ToggleBtn.BackgroundTransparency = 1
+ToggleBtn.BorderSizePixel    = 0
+ToggleBtn.Text               = ""
+ToggleBtn.ZIndex             = 3
+ToggleBtn.Parent             = TitleBar
+
+local ToggleIcon = makeIcon(ToggleBtn, ICONS.on, 26, 0, 0, 4)
+
+-- Content area
+local ContentFrame = Instance.new("Frame")
+ContentFrame.Name             = "Content"
+ContentFrame.Size             = UDim2.new(1, 0, 1, -36)
+ContentFrame.Position         = UDim2.new(0, 0, 0, 36)
+ContentFrame.BackgroundTransparency = 1
+ContentFrame.Parent           = MainFrame
+
+local ScrollFrame = Instance.new("ScrollingFrame")
+ScrollFrame.Size              = UDim2.new(1, -6, 1, -6)
+ScrollFrame.Position          = UDim2.new(0, 3, 0, 3)
+ScrollFrame.BackgroundTransparency = 1
+ScrollFrame.BorderSizePixel   = 0
+ScrollFrame.ScrollBarThickness = 3
+ScrollFrame.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 110)
+ScrollFrame.CanvasSize        = UDim2.new(0, 0, 0, 0)
+ScrollFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+ScrollFrame.Parent            = ContentFrame
+
+local ListLayout = Instance.new("UIListLayout")
+ListLayout.Padding   = UDim.new(0, 5)
+ListLayout.SortOrder = Enum.SortOrder.Name
+ListLayout.Parent    = ScrollFrame
+
+local ListPadding = Instance.new("UIPadding")
+ListPadding.PaddingTop   = UDim.new(0, 4)
+ListPadding.PaddingLeft  = UDim.new(0, 4)
+ListPadding.PaddingRight = UDim.new(0, 4)
+ListPadding.Parent       = ScrollFrame
+
+-- ══════════════════════════════════════════
+--  DRAG
+-- ══════════════════════════════════════════
+local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
+
+local function updateDrag(input)
+    if not dragging then return end
+    local delta = input.Position - dragStart
+    TweenService:Create(MainFrame, TweenInfo.new(0.1, Enum.EasingStyle.Quad), {
+        Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    }):Play()
+end
+
+TitleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragging  = true
+        dragStart = input.Position
+        startPos  = MainFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+TitleBar.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement
+    or input.UserInputType == Enum.UserInputType.Touch then
+        dragInput = input
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then updateDrag(input) end
+end)
+
+-- ══════════════════════════════════════════
+--  TOGGLE
+-- ══════════════════════════════════════════
+local detectorEnabled = true
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    detectorEnabled = not detectorEnabled
+    if detectorEnabled then
+        ToggleIcon.Image     = ICONS.on
+        ContentFrame.Visible = true
+        TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(0, 280, 0, 340)
+        }):Play()
+    else
+        ToggleIcon.Image     = ICONS.off
+        ContentFrame.Visible = false
+        TweenService:Create(MainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quad), {
+            Size = UDim2.new(0, 280, 0, 36)
+        }):Play()
+    end
+end)
+
+-- ══════════════════════════════════════════
+--  PLAYER CARDS
+-- ══════════════════════════════════════════
+local playerCards = {}
+local playerData  = {}
+
+local COLOR_CLEAN   = Color3.fromRGB(60, 210, 80)
+local COLOR_CHEAT   = Color3.fromRGB(220, 60, 60)
+local COLOR_NEUTRAL = Color3.fromRGB(190, 190, 190)
+local COLOR_WAIT    = Color3.fromRGB(200, 200, 80)
+
+local function createCard(player)
+    if playerCards[player.Name] then return end
+
+    local card = Instance.new("Frame")
+    card.Name              = player.Name
+    card.Size              = UDim2.new(1, 0, 0, 110)
+    card.BackgroundColor3  = Color3.fromRGB(34, 34, 44)
+    card.BorderSizePixel   = 0
+    card.Parent            = ScrollFrame
+    Instance.new("UICorner", card).CornerRadius = UDim.new(0, 6)
+
+    -- Status sidebar
+    local statusBar = Instance.new("Frame")
+    statusBar.Name             = "StatusBar"
+    statusBar.Size             = UDim2.new(0, 4, 1, -10)
+    statusBar.Position         = UDim2.new(0, 4, 0, 5)
+    statusBar.BackgroundColor3 = COLOR_WAIT
+    statusBar.BorderSizePixel  = 0
+    statusBar.ZIndex           = 2
+    statusBar.Parent           = card
+    Instance.new("UICorner", statusBar).CornerRadius = UDim.new(0, 4)
+
+    -- line and icons
+    local _, userLbl  = makeIconRow(card, ICONS.username,   player.Name,           8,  15, 12, 2)
+    local _, dispLbl  = makeIconRow(card, ICONS.display,    player.DisplayName,    28, 15, 12, 2)
+    local _, studLbl  = makeIconRow(card, ICONS.studs,      "Studs/s: —",          48, 15, 12, 2)
+
+    -- Status line (dynamically changing icon)
+    local statusRow = Instance.new("Frame")
+    statusRow.Size                  = UDim2.new(1, -14, 0, 16)
+    statusRow.Position              = UDim2.new(0, 10, 0, 68)
+    statusRow.BackgroundTransparency = 1
+    statusRow.ZIndex                = 2
+    statusRow.Parent                = card
+
+    local statusIcon = makeIcon(statusRow, ICONS.analisando, 16, 0, 0, 3)
+
+    local statusLbl = Instance.new("TextLabel")
+    statusLbl.Size             = UDim2.new(1, -22, 1, 0)
+    statusLbl.Position         = UDim2.new(0, 22, 0, 0)
+    statusLbl.BackgroundTransparency = 1
+    statusLbl.Text             = "Analisando..."
+    statusLbl.TextColor3       = COLOR_WAIT
+    statusLbl.TextSize         = 12
+    statusLbl.Font             = Enum.Font.GothamBold
+    statusLbl.TextXAlignment   = Enum.TextXAlignment.Left
+    statusLbl.TextTruncate     = Enum.TextTruncate.AtEnd
+    statusLbl.ZIndex           = 2
+    statusLbl.Parent           = statusRow
+
+    -- Cheating flag line
+    local _, flagsLbl = makeIconRow(card, ICONS.scripter, "", 88, 15, 11, 2)
+    flagsLbl.Text      = ""
+    flagsLbl.TextColor3 = COLOR_CHEAT
+
+    playerCards[player.Name] = {
+        card        = card,
+        statusBar   = statusBar,
+        statusIcon  = statusIcon,
+        statusLbl   = statusLbl,
+        userLbl     = userLbl,
+        dispLbl     = dispLbl,
+        studLbl     = studLbl,
+        flagsLbl    = flagsLbl,
+    }
+end
+
+local function removeCard(player)
+    if playerCards[player.Name] then
+        playerCards[player.Name].card:Destroy()
+        playerCards[player.Name] = nil
+    end
+    playerData[player.Name] = nil
+end
+
+-- ══════════════════════════════════════════
+--  DETECTION
+-- ══════════════════════════════════════════
+local function isGrounded(hrp, character)
+    local params = RaycastParams.new()
+    params.FilterDescendantsInstances = { character }
+    params.FilterType = Enum.RaycastFilterType.Exclude
+    return workspace:Raycast(hrp.Position, Vector3.new(0, -4.5, 0), params) ~= nil
+end
+
+local function checkPlayer(player)
+    local character = player.Character
+    if not character then return end
+
+    local hrp      = character:FindFirstChild("HumanoidRootPart")
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not hrp or not humanoid then return end
+
+    local card = playerCards[player.Name]
+    if not card then return end
+
+    if not playerData[player.Name] then
+        playerData[player.Name] = { airTime = 0 }
+    end
+    local data = playerData[player.Name]
+
+    local vel        = hrp.AssemblyLinearVelocity
+    local hSpeed     = Vector3.new(vel.X, 0, vel.Z).Magnitude
+    local totalSpeed = vel.Magnitude
+    local walkSpeed  = math.max(humanoid.WalkSpeed, 1)
+    local jumpPower  = humanoid.JumpPower
+
+    local grounded = isGrounded(hrp, character)
+    data.airTime   = grounded and 0 or (data.airTime + CONFIG.CHECK_INTERVAL)
+
+    local flags = {}
+
+    if hSpeed > walkSpeed * CONFIG.SPEED_MULTIPLIER and hSpeed > 5 then
+        table.insert(flags, "Speed")
+    end
+    if data.airTime > CONFIG.MAX_AIR_TIME and vel.Y > -8 then
+        table.insert(flags, "Fly")
+    end
+    if totalSpeed > CONFIG.FLING_THRESHOLD then
+        table.insert(flags, "Fling")
+    end
+    if vel.Y > jumpPower * CONFIG.JUMP_MULTIPLIER and vel.Y > 10 then
+        table.insert(flags, "Abnormal Jump")
+    end
+
+    card.studLbl.Text = string.format("Studs/s: %.1f  (WS:%d)", hSpeed, walkSpeed)
+
+    if #flags > 0 then
+        card.statusBar.BackgroundColor3 = COLOR_CHEAT
+        card.statusIcon.Image           = ICONS.scripter
+        card.statusLbl.Text             = "Scripter Detectado"
+        card.statusLbl.TextColor3       = COLOR_CHEAT
+        card.userLbl.TextColor3         = COLOR_CHEAT
+        card.dispLbl.TextColor3         = COLOR_CHEAT
+        card.flagsLbl.Text              = table.concat(flags, " | ")
+        card.flagsLbl.TextColor3        = COLOR_CHEAT
+    else
+        card.statusBar.BackgroundColor3 = COLOR_CLEAN
+        card.statusIcon.Image           = ICONS.normal
+        card.statusLbl.Text             = "Normal"
+        card.statusLbl.TextColor3       = COLOR_CLEAN
+        card.userLbl.TextColor3         = COLOR_NEUTRAL
+        card.dispLbl.TextColor3         = COLOR_NEUTRAL
+        card.flagsLbl.Text              = ""
+    end
+end
+
+-- ══════════════════════════════════════════
+--  PLAYER SETUP
+-- ══════════════════════════════════════════
+local function setupPlayer(player)
+    createCard(player)
+    player.CharacterAdded:Connect(function()
+        playerData[player.Name] = nil
+    end)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+    setupPlayer(player)
+end
+
+Players.PlayerAdded:Connect(setupPlayer)
+Players.PlayerRemoving:Connect(removeCard)
+
+-- ══════════════════════════════════════════
+--  MAIN LOOP
+-- ══════════════════════════════════════════
+local elapsed = 0
+RunService.Heartbeat:Connect(function(dt)
+    if not detectorEnabled then return end
+    elapsed += dt
+    if elapsed < CONFIG.CHECK_INTERVAL then return end
+    elapsed = 0
+    for _, player in ipairs(Players:GetPlayers()) do
+        pcall(checkPlayer, player)
+    end
+end)
