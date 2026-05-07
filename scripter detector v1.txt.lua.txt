@@ -288,7 +288,7 @@ local function createCard(player)
     statusLbl.Size             = UDim2.new(1, -22, 1, 0)
     statusLbl.Position         = UDim2.new(0, 22, 0, 0)
     statusLbl.BackgroundTransparency = 1
-    statusLbl.Text             = "Analisando..."
+    statusLbl.Text             = "analyzing..."
     statusLbl.TextColor3       = COLOR_WAIT
     statusLbl.TextSize         = 12
     statusLbl.Font             = Enum.Font.GothamBold
@@ -377,7 +377,7 @@ local function checkPlayer(player)
     if #flags > 0 then
         card.statusBar.BackgroundColor3 = COLOR_CHEAT
         card.statusIcon.Image           = ICONS.scripter
-        card.statusLbl.Text             = "Scripter Detectado"
+        card.statusLbl.Text             = "SCRIPTER DETECTED"
         card.statusLbl.TextColor3       = COLOR_CHEAT
         card.userLbl.TextColor3         = COLOR_CHEAT
         card.dispLbl.TextColor3         = COLOR_CHEAT
