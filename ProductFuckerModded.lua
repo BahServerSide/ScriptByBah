@@ -1,3 +1,288 @@
+-- Product Fucker
+
+local TweenService = game:GetService("TweenService")
+local FADE_TIME = 0.35
+
+local DISCORD_LINK = "https://discord.gg/KJ2rqqYGFB"
+local YOUTUBE_LINK = "https://youtu.be/q8p68brAJ3c?is=dAI8to7BuzzMWQ1f"
+
+local NOTICE_TEXT = "This isn't my script—it belongs to someone else; I simply improved it and made it functional. I also want to clarify that it doesn't bypass *all* purchases—it only bypasses item purchases, not gamepasses. So, just a heads-up: if you're interested, feel free to join our Ninja Hub Discord to check out more great universal scripts."
+
+local FAQ_TEXT = [[To use the script, follow this tutorial:
+
+1. Go to the Listener tab.
+2. Go to a purchased item in the game.
+3. It will appear in the Listener tab.
+4. You can click to copy the ID or go to the button with the arrow icon.
+5. After doing one of these two things, go to the Action tab.
+6. Enter the ID.
+7. Then click on Signal product and the item will appear in your inventory, or you can click on the item again.
+
+Or use Tab Scan and scan all ids
+
+If you need a video to make it clearer, click on the text that says "YouTube".
+
+(Remember that this is not a visual (client) script; everyone can see it.)]]
+
+local startProductFucker -- forward declaration
+
+-- fade
+local function collectFadable(root)
+    local items = {}
+
+    local function addProp(obj, prop)
+        local ok, current = pcall(function() return obj[prop] end)
+        if ok then
+            table.insert(items, {Object = obj, Prop = prop, Target = current})
+        end
+    end
+
+    if root:IsA("GuiObject") then
+        addProp(root, "BackgroundTransparency")
+    end
+
+    for _, obj in ipairs(root:GetDescendants()) do
+        if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
+            addProp(obj, "TextTransparency")
+            addProp(obj, "BackgroundTransparency")
+        elseif obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
+            addProp(obj, "ImageTransparency")
+            addProp(obj, "BackgroundTransparency")
+        elseif obj:IsA("Frame") or obj:IsA("ScrollingFrame") then
+            addProp(obj, "BackgroundTransparency")
+        elseif obj:IsA("UIStroke") then
+            addProp(obj, "Transparency")
+        end
+    end
+
+    return items
+end
+
+local function fadeIn(root, duration)
+    local items = collectFadable(root)
+    for _, item in ipairs(items) do
+        item.Object[item.Prop] = 1
+    end
+    root.Visible = true
+    for _, item in ipairs(items) do
+        TweenService:Create(item.Object, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {[item.Prop] = item.Target}):Play()
+    end
+end
+
+local function fadeOut(root, duration, onDone)
+    local items = collectFadable(root)
+    for _, item in ipairs(items) do
+        TweenService:Create(item.Object, TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {[item.Prop] = 1}):Play()
+    end
+    task.delay(duration, function()
+        if onDone then onDone() end
+    end)
+end
+
+-- Interface base
+local function buildBaseFrame(screenGuiName, titleText)
+    local ScreenGui = Instance.new("ScreenGui")
+    ScreenGui.Name = screenGuiName
+    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+    ScreenGui.ResetOnSpawn = false
+    ScreenGui.IgnoreGuiInset = true
+    ScreenGui.DisplayOrder = 50
+    ScreenGui.Parent = game:GetService("CoreGui")
+
+    local mainbg = Instance.new("Frame")
+    mainbg.Name = "mainbg"
+    mainbg.AnchorPoint = Vector2.new(0.5, 0.5)
+    mainbg.Position = UDim2.new(0.5, 0, 0.5, 0)
+    mainbg.Size = UDim2.new(0, 460, 0, 320)
+    mainbg.BorderSizePixel = 0
+    mainbg.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    mainbg.BackgroundColor3 = Color3.fromRGB(26, 27, 36)
+    mainbg.Parent = ScreenGui
+
+    local UICorner = Instance.new("UICorner")
+    UICorner.CornerRadius = UDim.new(0, 6)
+    UICorner.Parent = mainbg
+
+    local UIStroke = Instance.new("UIStroke")
+    UIStroke.Color = Color3.fromRGB(154, 154, 154)
+    UIStroke.Parent = mainbg
+
+    local uiScale = Instance.new("UIScale")
+    uiScale.Parent = mainbg
+
+    local function updateScale()
+        local camera = workspace.CurrentCamera
+        if not camera then return end
+        local viewport = camera.ViewportSize
+        local baseWidth, baseHeight = 460, 320
+        local padding = 40
+        local scaleX = (viewport.X - padding) / baseWidth
+        local scaleY = (viewport.Y - padding) / baseHeight
+        uiScale.Scale = math.min(1, scaleX, scaleY)
+    end
+    updateScale()
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+    end
+
+    local Header = Instance.new("TextLabel")
+    Header.Name = "Header"
+    Header.BackgroundTransparency = 1
+    Header.BorderSizePixel = 0
+    Header.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    Header.Position = UDim2.new(0, 20, 0, 14)
+    Header.Size = UDim2.new(0, 200, 0, 22)
+    Header.Text = titleText
+    Header.TextColor3 = Color3.fromRGB(255, 255, 255)
+    Header.TextXAlignment = Enum.TextXAlignment.Left
+    Header.TextYAlignment = Enum.TextYAlignment.Center
+    Header.TextWrapped = true
+    Header.TextScaled = true
+    Header.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    Header.Parent = mainbg
+
+    local HeaderConstraint = Instance.new("UITextSizeConstraint")
+    HeaderConstraint.MaxTextSize = 20
+    HeaderConstraint.MinTextSize = 14
+    HeaderConstraint.Parent = Header
+
+    -- Close Button (top right)
+    local CloseBtn = Instance.new("ImageButton")
+    CloseBtn.Name = "CloseBtn"
+    CloseBtn.AnchorPoint = Vector2.new(1, 0)
+    CloseBtn.Position = UDim2.new(1, -12, 0, 12)
+    CloseBtn.Size = UDim2.new(0, 26, 0, 26)
+    CloseBtn.ImageTransparency = 1
+    CloseBtn.BorderSizePixel = 0
+    CloseBtn.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    CloseBtn.BackgroundColor3 = Color3.fromRGB(90, 99, 109)
+    CloseBtn.Parent = mainbg
+
+    local UICorner_Close = Instance.new("UICorner")
+    UICorner_Close.CornerRadius = UDim.new(0, 6)
+    UICorner_Close.Parent = CloseBtn
+
+    local UIStroke_Close = Instance.new("UIStroke")
+    UIStroke_Close.Color = Color3.fromRGB(154, 154, 154)
+    UIStroke_Close.Parent = CloseBtn
+
+    local UIGradient_Close = Instance.new("UIGradient")
+    UIGradient_Close.Rotation = -90
+    UIGradient_Close.Color = ColorSequence.new{
+        ColorSequenceKeypoint.new(0, Color3.fromRGB(163, 163, 163)),
+        ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+    }
+    UIGradient_Close.Parent = CloseBtn
+
+    local Ico_Close = Instance.new("ImageLabel")
+    Ico_Close.Name = "Ico"
+    Ico_Close.AnchorPoint = Vector2.new(0.5, 0.5)
+    Ico_Close.Position = UDim2.new(0.5, 0, 0.5, 0)
+    Ico_Close.Size = UDim2.new(0, 14, 0, 14)
+    Ico_Close.BackgroundTransparency = 1
+    Ico_Close.BorderSizePixel = 0
+    Ico_Close.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    Ico_Close.Image = "rbxassetid://7743878857"
+    Ico_Close.ImageColor3 = Color3.fromRGB(255, 255, 255)
+    Ico_Close.Parent = CloseBtn
+
+    return ScreenGui, mainbg, CloseBtn
+end
+
+local function buildMainText(parent, text)
+    local Body = Instance.new("TextLabel")
+    Body.Name = "Body"
+    Body.BackgroundTransparency = 1
+    Body.BorderSizePixel = 0
+    Body.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    Body.Position = UDim2.new(0, 20, 0, 54)
+    Body.Size = UDim2.new(0, 420, 0, 210)
+    Body.Text = text
+    Body.TextColor3 = Color3.fromRGB(220, 220, 220)
+    Body.TextXAlignment = Enum.TextXAlignment.Left
+    Body.TextYAlignment = Enum.TextYAlignment.Top
+    Body.TextWrapped = true
+    Body.TextScaled = true
+    Body.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+    Body.Parent = parent
+
+    local BodyConstraint = Instance.new("UITextSizeConstraint")
+    BodyConstraint.MaxTextSize = 15
+    BodyConstraint.MinTextSize = 11
+    BodyConstraint.Parent = Body
+
+    return Body
+end
+
+local function buildLinkLabel(parent, text, color)
+    local LinkBtn = Instance.new("TextButton")
+    LinkBtn.Name = "LinkBtn"
+    LinkBtn.AnchorPoint = Vector2.new(1, 1)
+    LinkBtn.Position = UDim2.new(1, -20, 1, -14)
+    LinkBtn.Size = UDim2.new(0, 120, 0, 20)
+    LinkBtn.BackgroundTransparency = 1
+    LinkBtn.BorderSizePixel = 0
+    LinkBtn.BorderColor3 = Color3.fromRGB(0, 0, 0)
+    LinkBtn.AutoButtonColor = false
+    LinkBtn.Text = text
+    LinkBtn.TextColor3 = color
+    LinkBtn.TextXAlignment = Enum.TextXAlignment.Right
+    LinkBtn.TextYAlignment = Enum.TextYAlignment.Center
+    LinkBtn.TextScaled = true
+    LinkBtn.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+    LinkBtn.Parent = parent
+
+    local LinkConstraint = Instance.new("UITextSizeConstraint")
+    LinkConstraint.MaxTextSize = 16
+    LinkConstraint.MinTextSize = 12
+    LinkConstraint.Parent = LinkBtn
+
+    return LinkBtn
+end
+
+-- faq
+local function openFaq()
+    local ScreenGui, mainbg, CloseBtn = buildBaseFrame("NinjaHub_FaqGui", "Faq")
+    buildMainText(mainbg, FAQ_TEXT)
+    local YoutubeBtn = buildLinkLabel(mainbg, "YouTube", Color3.fromRGB(255, 60, 60))
+
+    YoutubeBtn.MouseButton1Click:Connect(function()
+        setclipboard(YOUTUBE_LINK)
+    end)
+
+    fadeIn(mainbg, FADE_TIME)
+
+    CloseBtn.MouseButton1Click:Connect(function()
+        fadeOut(mainbg, FADE_TIME, function()
+            ScreenGui:Destroy()
+            startProductFucker()
+        end)
+    end)
+end
+
+-- notice
+local function openNotice()
+    local ScreenGui, mainbg, CloseBtn = buildBaseFrame("NinjaHub_NoticeGui", "Notice")
+    buildMainText(mainbg, NOTICE_TEXT)
+    local DiscordBtn = buildLinkLabel(mainbg, "Discord", Color3.fromRGB(88, 145, 255))
+
+    DiscordBtn.MouseButton1Click:Connect(function()
+        setclipboard(DISCORD_LINK)
+    end)
+
+    fadeIn(mainbg, FADE_TIME)
+
+    CloseBtn.MouseButton1Click:Connect(function()
+        fadeOut(mainbg, FADE_TIME, function()
+            ScreenGui:Destroy()
+            openFaq()
+        end)
+    end)
+end
+
+-- product fucker
+
+function startProductFucker()
 -- Product Purchase Faker
 -- Made by esore 2026
 
@@ -15,6 +300,33 @@ mainbg.Size = UDim2.new(0, 411, 0, 288)
 mainbg.BorderSizePixel = 0
 mainbg.BackgroundColor3 = Color3.fromRGB(26, 27, 36)
 mainbg.Parent = ScreenGui
+
+mainbg.Visible = false
+
+local uiScale = Instance.new("UIScale")
+uiScale.Parent = mainbg
+
+local function updateScale()
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    local viewport = camera.ViewportSize
+    local baseWidth, baseHeight = 411, 288
+    local padding = 40
+    local scaleX = (viewport.X - padding) / baseWidth
+    local scaleY = (viewport.Y - padding) / baseHeight
+    uiScale.Scale = math.min(1, scaleX, scaleY)
+end
+
+updateScale()
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+    updateScale()
+    if workspace.CurrentCamera then
+        workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+    end
+end)
+if workspace.CurrentCamera then
+    workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(updateScale)
+end
 
 local UICorner = Instance.new("UICorner")
 UICorner.CornerRadius = UDim.new(0, 6)
@@ -181,7 +493,7 @@ UIGradient.Color = ColorSequence.new{
 }
 UIGradient.Parent = ActionTab
 
--- ==================== SCANNER TAB FRAME ====================
+-- scam tab
 local scannerTabFrame = Instance.new("ScrollingFrame")
 scannerTabFrame.Visible = false
 scannerTabFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
@@ -246,7 +558,7 @@ UIGradient_ScanBtn.Color = ColorSequence.new{
 }
 UIGradient_ScanBtn.Parent = ScanBtn
 
--- ReScan Button (top right)
+-- ReScan Button
 local ReScanBtn = Instance.new("ImageButton")
 ReScanBtn.Size = UDim2.new(0, 96, 0, 22)
 ReScanBtn.Name = "ReScanBtn"
@@ -290,7 +602,7 @@ UIGradient_ReScan.Color = ColorSequence.new{
 }
 UIGradient_ReScan.Parent = ReScanBtn
 
--- Scanner Results ScrollFrame
+-- Scanner Results
 local ScannerResults = Instance.new("ScrollingFrame")
 ScannerResults.Name = "ScannerResults"
 ScannerResults.Size = UDim2.new(0, 389, 0, 170)
@@ -306,7 +618,7 @@ UIListLayout_Results.Padding = UDim.new(0.009999999776482582, 0)
 UIListLayout_Results.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout_Results.Parent = ScannerResults
 
--- ==================== LISTENER TAB FRAME ====================
+-- listener tab
 local listenerTabFrame = Instance.new("ScrollingFrame")
 listenerTabFrame.Visible = false
 listenerTabFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
@@ -327,7 +639,7 @@ UIListLayout_listener.Padding = UDim.new(0.009999999776482582, 0)
 UIListLayout_listener.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout_listener.Parent = listenerTabFrame
 
--- ==================== ACTION TAB FRAME ====================
+-- action tab
 local actionTabFrame = Instance.new("Frame")
 actionTabFrame.ClipsDescendants = true
 actionTabFrame.BorderColor3 = Color3.fromRGB(0, 0, 0)
@@ -749,7 +1061,7 @@ PurchaseBtn.MouseButton1Click:Connect(function()
     )
 end)
 
--- ==================== ADD RESPONSE FUNCTION (Shared) ====================
+-- response function
 function addLog(pName, purchasedId, wasPurchased, parentFrame)
     parentFrame = parentFrame or listenerTabFrame
 
@@ -964,7 +1276,7 @@ function addLog(pName, purchasedId, wasPurchased, parentFrame)
     end)
 end
 
--- ==================== SCANNER FUNCTIONALITY ====================
+-- scanner functionality
 local function clearScanner()
     for _, child in ipairs(ScannerResults:GetChildren()) do
         if child:IsA("Frame") then child:Destroy() end
@@ -1028,10 +1340,16 @@ ReScanBtn.MouseButton1Click:Connect(function()
     scanGame()
 end)
 
--- ==================== LISTENER EVENTS ====================
+-- listener events
 MarketplaceService.PromptProductPurchaseFinished:Connect(function(player, purchasedId, wasPurchased)
     print("Hook triggered for product:", purchasedId)
     print("Player:", player)
     print("WasPurchased:", wasPurchased)
     addLog(game:GetService("Players").LocalPlayer.Name, purchasedId, wasPurchased, listenerTabFrame)
 end)
+
+fadeIn(mainbg, FADE_TIME)
+
+end
+
+openNotice()
