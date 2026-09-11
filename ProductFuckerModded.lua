@@ -284,7 +284,7 @@ end
 
 function startProductFucker()
 -- Product Purchase Faker
--- Made by esore 2026
+-- Made by esore 2026 modded by Bah
 
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -639,6 +639,64 @@ UIListLayout_listener.Padding = UDim.new(0.009999999776482582, 0)
 UIListLayout_listener.SortOrder = Enum.SortOrder.LayoutOrder
 UIListLayout_listener.Parent = listenerTabFrame
 
+-- Delete All header (top right of Listener tab)
+local ListenerHeader = Instance.new("Frame")
+ListenerHeader.Name = "ListenerHeader"
+ListenerHeader.Size = UDim2.new(0, 369, 0, 22)
+ListenerHeader.BackgroundTransparency = 1
+ListenerHeader.BorderSizePixel = 0
+ListenerHeader.LayoutOrder = 0
+ListenerHeader.Parent = listenerTabFrame
+
+local DeleteAllBtn = Instance.new("ImageButton")
+DeleteAllBtn.Name = "DeleteAllBtn"
+DeleteAllBtn.Size = UDim2.new(0, 96, 0, 22)
+DeleteAllBtn.AnchorPoint = Vector2.new(1, 0)
+DeleteAllBtn.Position = UDim2.new(1, 0, 0, 0)
+DeleteAllBtn.ImageTransparency = 1
+DeleteAllBtn.BorderSizePixel = 0
+DeleteAllBtn.BackgroundColor3 = Color3.fromRGB(90, 99, 109)
+DeleteAllBtn.Parent = ListenerHeader
+
+local UICorner_DelAll = Instance.new("UICorner")
+UICorner_DelAll.CornerRadius = UDim.new(0, 6)
+UICorner_DelAll.Parent = DeleteAllBtn
+
+local UIStroke_DelAll = Instance.new("UIStroke")
+UIStroke_DelAll.Color = Color3.fromRGB(154, 154, 154)
+UIStroke_DelAll.BorderStrokePosition = Enum.BorderStrokePosition.Inner
+UIStroke_DelAll.Parent = DeleteAllBtn
+
+local TextLabel_DelAll = Instance.new("TextLabel")
+TextLabel_DelAll.TextWrapped = true
+TextLabel_DelAll.TextColor3 = Color3.fromRGB(255, 255, 255)
+TextLabel_DelAll.BorderSizePixel = 0
+TextLabel_DelAll.Text = "Delete all"
+TextLabel_DelAll.Size = UDim2.new(0, 80, 0, 11)
+TextLabel_DelAll.AnchorPoint = Vector2.new(0.5, 0.5)
+TextLabel_DelAll.BackgroundTransparency = 1
+TextLabel_DelAll.Position = UDim2.new(0.5, 0, 0.5, 0)
+TextLabel_DelAll.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+TextLabel_DelAll.TextSize = 14
+TextLabel_DelAll.TextScaled = true
+TextLabel_DelAll.Parent = DeleteAllBtn
+
+local UIGradient_DelAll = Instance.new("UIGradient")
+UIGradient_DelAll.Rotation = -90
+UIGradient_DelAll.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(163, 163, 163)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+}
+UIGradient_DelAll.Parent = DeleteAllBtn
+
+DeleteAllBtn.MouseButton1Click:Connect(function()
+	for _, child in ipairs(listenerTabFrame:GetChildren()) do
+		if child:IsA("Frame") and child.Name == "Response" then
+			child:Destroy()
+		end
+	end
+end)
+
 -- action tab
 local actionTabFrame = Instance.new("Frame")
 actionTabFrame.ClipsDescendants = true
@@ -723,9 +781,9 @@ Ico.Parent = grferge
 local Warn = Instance.new("TextLabel")
 Warn.TextWrapped = true
 Warn.Name = "Warn"
-Warn.TextColor3 = Color3.fromRGB(255, 53, 53)
+Warn.TextColor3 = Color3.fromRGB(180, 180, 180)
 Warn.BorderColor3 = Color3.fromRGB(0, 0, 0)
-Warn.Text = "! This won't actually purchase the product, This just fakes it."
+Warn.Text = "Ready"
 Warn.Size = UDim2.new(0, 356, 0, 12)
 Warn.Position = UDim2.new(0.45807769894599915, 0, 0.13062931597232819, 0)
 Warn.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -738,15 +796,34 @@ Warn.TextSize = 14
 Warn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 Warn.Parent = actionTabFrame
 
+local function setWarn(msg, isSuccess)
+	Warn.Text = tostring(msg or "")
+	if isSuccess == true then
+		Warn.TextColor3 = Color3.fromRGB(50, 200, 80)
+	elseif isSuccess == false then
+		Warn.TextColor3 = Color3.fromRGB(255, 53, 53)
+	else
+		Warn.TextColor3 = Color3.fromRGB(180, 180, 180)
+	end
+end
+
+-- Row: Signal Product + Loop checkbox
+local HookRow = Instance.new("Frame")
+HookRow.Name = "HookRow"
+HookRow.Size = UDim2.new(0, 369, 0, 22)
+HookRow.BackgroundTransparency = 1
+HookRow.BorderSizePixel = 0
+HookRow.Parent = actionTabFrame
+
 local HookBtn = Instance.new("ImageButton")
 HookBtn.Size = UDim2.new(0, 96, 0, 22)
 HookBtn.Name = "HookBtn"
 HookBtn.ImageTransparency = 1
 HookBtn.BorderColor3 = Color3.fromRGB(0, 0, 0)
-HookBtn.Position = UDim2.new(0, 0, 0.10440554469823837, 0)
+HookBtn.Position = UDim2.new(0, 0, 0, 0)
 HookBtn.BorderSizePixel = 0
 HookBtn.BackgroundColor3 = Color3.fromRGB(90, 99, 109)
-HookBtn.Parent = actionTabFrame
+HookBtn.Parent = HookRow
 
 local UICorner_Hook = Instance.new("UICorner")
 UICorner_Hook.CornerRadius = UDim.new(0, 6)
@@ -780,6 +857,62 @@ UIGradient_Hook.Color = ColorSequence.new{
 	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
 }
 UIGradient_Hook.Parent = HookBtn
+
+-- Loop checkbox (same design as buttons)
+local LoopBox = Instance.new("ImageButton")
+LoopBox.Name = "LoopBox"
+LoopBox.Size = UDim2.new(0, 22, 0, 22)
+LoopBox.Position = UDim2.new(0, 106, 0, 0)
+LoopBox.ImageTransparency = 1
+LoopBox.BorderSizePixel = 0
+LoopBox.BackgroundColor3 = Color3.fromRGB(90, 99, 109)
+LoopBox.Parent = HookRow
+
+local UICorner_Loop = Instance.new("UICorner")
+UICorner_Loop.CornerRadius = UDim.new(0, 6)
+UICorner_Loop.Parent = LoopBox
+
+local UIStroke_Loop = Instance.new("UIStroke")
+UIStroke_Loop.Color = Color3.fromRGB(154, 154, 154)
+UIStroke_Loop.BorderStrokePosition = Enum.BorderStrokePosition.Inner
+UIStroke_Loop.Parent = LoopBox
+
+local UIGradient_Loop = Instance.new("UIGradient")
+UIGradient_Loop.Rotation = -90
+UIGradient_Loop.Color = ColorSequence.new{
+	ColorSequenceKeypoint.new(0, Color3.fromRGB(163, 163, 163)),
+	ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 255, 255))
+}
+UIGradient_Loop.Parent = LoopBox
+
+local LoopIcon = Instance.new("ImageLabel")
+LoopIcon.Name = "LoopIcon"
+LoopIcon.Size = UDim2.new(0, 14, 0, 14)
+LoopIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+LoopIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+LoopIcon.BackgroundTransparency = 1
+LoopIcon.BorderSizePixel = 0
+LoopIcon.Image = "rbxassetid://7733715400"
+LoopIcon.ImageColor3 = Color3.fromRGB(255, 255, 255)
+LoopIcon.Visible = false
+LoopIcon.Parent = LoopBox
+
+local LoopLabel = Instance.new("TextLabel")
+LoopLabel.Name = "LoopLabel"
+LoopLabel.Size = UDim2.new(0, 40, 0, 22)
+LoopLabel.Position = UDim2.new(0, 132, 0, 0)
+LoopLabel.BackgroundTransparency = 1
+LoopLabel.BorderSizePixel = 0
+LoopLabel.Text = "Loop"
+LoopLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+LoopLabel.TextXAlignment = Enum.TextXAlignment.Left
+LoopLabel.TextYAlignment = Enum.TextYAlignment.Center
+LoopLabel.FontFace = Font.new("rbxasset://fonts/families/SourceSansPro.json", Enum.FontWeight.Bold, Enum.FontStyle.Normal)
+LoopLabel.TextSize = 14
+LoopLabel.TextScaled = true
+LoopLabel.Parent = HookRow
+
+local loopActive = false
 
 local GamepassBtn = Instance.new("ImageButton")
 GamepassBtn.Size = UDim2.new(0, 96, 0, 22)
@@ -997,68 +1130,92 @@ end)
 
 local MarketplaceService = game:GetService("MarketplaceService")
 
+local function signalProductOnce(productID)
+	MarketplaceService:SignalPromptProductPurchaseFinished(
+		game:GetService("Players").LocalPlayer.UserId,
+		productID,
+		true
+	)
+end
+
 HookBtn.MouseButton1Click:Connect(function()
-    local productID = tonumber(ProductIDInput.Text)
-    if not productID then
-        warn("Invalid Product ID")
-        return
-    end
+	local productID = tonumber(ProductIDInput.Text)
+	if not productID then
+		setWarn("Invalid Product ID", false)
+		return
+	end
 
-    print("Falsely Bought product:", productID)
+	signalProductOnce(productID)
+	setWarn("Falsely Bought product: " .. tostring(productID), true)
+end)
 
-    MarketplaceService:SignalPromptProductPurchaseFinished(
-        game:GetService("Players").LocalPlayer.UserId,
-        productID,
-        true
-    )
+-- Loop toggle
+LoopBox.MouseButton1Click:Connect(function()
+	loopActive = not loopActive
+	LoopIcon.Visible = loopActive
+
+	if loopActive then
+		setWarn("Loop ON — firing Signal Product rapidly", true)
+		task.spawn(function()
+			while loopActive do
+				local productID = tonumber(ProductIDInput.Text)
+				if productID then
+					signalProductOnce(productID)
+				else
+					setWarn("Loop paused: Invalid Product ID", false)
+					task.wait(0.5)
+				end
+				task.wait(0.05)
+			end
+		end)
+	else
+		setWarn("Loop OFF", nil)
+	end
 end)
 
 GamepassBtn.MouseButton1Click:Connect(function()
-    local productID = tonumber(ProductIDInput.Text)
-    if not productID then
-        warn("Invalid Product ID")
-        return
-    end
+	local productID = tonumber(ProductIDInput.Text)
+	if not productID then
+		setWarn("Invalid Product ID", false)
+		return
+	end
 
-    print("Falsely Bought product:", productID)
-
-    MarketplaceService:SignalPromptGamePassPurchaseFinished(
-        game:GetService("Players").LocalPlayer,
-        productID,
-        true
-    )
+	MarketplaceService:SignalPromptGamePassPurchaseFinished(
+		game:GetService("Players").LocalPlayer,
+		productID,
+		true
+	)
+	setWarn("Falsely Bought gamepass: " .. tostring(productID), true)
 end)
 
 BulkBtn.MouseButton1Click:Connect(function()
-    local productID = tonumber(ProductIDInput.Text)
-    if not productID then
-        warn("Invalid Product ID")
-        return
-    end
+	local productID = tonumber(ProductIDInput.Text)
+	if not productID then
+		setWarn("Invalid Product ID", false)
+		return
+	end
 
-    print("Falsely Bought product:", productID)
-
-    MarketplaceService:SignalPromptBulkPurchaseFinished(
-        game:GetService("Players").LocalPlayer.UserId,
-        productID,
-        true
-    )
+	MarketplaceService:SignalPromptBulkPurchaseFinished(
+		game:GetService("Players").LocalPlayer.UserId,
+		productID,
+		true
+	)
+	setWarn("Falsely Bought bulk: " .. tostring(productID), true)
 end)
 
 PurchaseBtn.MouseButton1Click:Connect(function()
-    local productID = tonumber(ProductIDInput.Text)
-    if not productID then
-        warn("Invalid Product ID")
-        return
-    end
+	local productID = tonumber(ProductIDInput.Text)
+	if not productID then
+		setWarn("Invalid Product ID", false)
+		return
+	end
 
-    print("Falsely Bought product:", productID)
-
-    MarketplaceService:SignalPromptPurchaseFinished(
-        game:GetService("Players").LocalPlayer.UserId,
-        productID,
-        true
-    )
+	MarketplaceService:SignalPromptPurchaseFinished(
+		game:GetService("Players").LocalPlayer.UserId,
+		productID,
+		true
+	)
+	setWarn("Falsely Bought purchase: " .. tostring(productID), true)
 end)
 
 -- response function
@@ -1074,6 +1231,7 @@ function addLog(pName, purchasedId, wasPurchased, parentFrame)
     Response.BorderColor3 = Color3.fromRGB(0, 0, 0)
     Response.BorderSizePixel = 0
     Response.BackgroundColor3 = Color3.fromRGB(90, 99, 109)
+    Response.LayoutOrder = 1
     Response.Parent = parentFrame
 
     local UICorner = Instance.new("UICorner")
@@ -1286,47 +1444,28 @@ end
 local function scanGame()
     clearScanner()
 
-    local foundProducts = {}
-    local success, err = pcall(function()
-        for _, obj in ipairs(game:GetDescendants()) do
-            if obj:IsA("TextLabel") or obj:IsA("TextButton") or obj:IsA("TextBox") then
-                local text = obj.Text or ""
-                -- Look for product IDs in text (numbers that could be product IDs)
-                for id in string.gmatch(text, "%d+") do
-                    local numId = tonumber(id)
-                    if numId and numId > 1000000 and numId < 999999999 then
-                        table.insert(foundProducts, {Name = obj.Name, ID = numId, ParentName = obj.Parent and obj.Parent.Name or "Unknown"})
-                    end
-                end
-            end
-            -- Check for IntValues that might be product IDs
-            if obj:IsA("IntValue") or obj:IsA("NumberValue") then
-                local val = obj.Value
-                if val and val > 1000000 and val < 999999999 then
-                    table.insert(foundProducts, {Name = obj.Name, ID = val, ParentName = obj.Parent and obj.Parent.Name or "Unknown"})
-                end
-            end
-            -- Check attributes
-            for attrName, attrVal in pairs(obj:GetAttributes()) do
-                if type(attrVal) == "number" and attrVal > 1000000 and attrVal < 999999999 then
-                    table.insert(foundProducts, {Name = attrName, ID = attrVal, ParentName = obj.Name})
-                end
-            end
-        end
+    local success, developerProducts = pcall(function()
+        return MarketplaceService:GetDeveloperProductsAsync():GetCurrentPage()
     end)
 
-    if not success then
-        warn("Scan error: " .. tostring(err))
+    if not success or not developerProducts then
+        developerProducts = {}
+        warn("Scan error: failed to get developer products")
     end
 
-    local total = #foundProducts
+    local total = #developerProducts
     if total == 0 then
         addLog("No products found", 0, false, ScannerResults)
+        print("Scan complete! Found 0 products.")
         return
     end
 
-    for _, product in ipairs(foundProducts) do
-        addLog(product.Name .. " (" .. product.ParentName .. ")", product.ID, true, ScannerResults)
+    for _, developerProduct in pairs(developerProducts) do
+        local name = developerProduct.Name or "N/A"
+        local price = developerProduct.PriceInRobux or "N/A"
+        local productId = developerProduct.ProductId or 0
+        -- Mostra nome + preço (mesma lógica do arquivo.lua)
+        addLog(name .. " | Price: " .. tostring(price), productId, true, ScannerResults)
     end
 
     print("Scan complete! Found " .. total .. " products.")
@@ -1340,12 +1479,12 @@ ReScanBtn.MouseButton1Click:Connect(function()
     scanGame()
 end)
 
--- listener events
+-- listener events (skip adding responses while Loop is active)
 MarketplaceService.PromptProductPurchaseFinished:Connect(function(player, purchasedId, wasPurchased)
-    print("Hook triggered for product:", purchasedId)
-    print("Player:", player)
-    print("WasPurchased:", wasPurchased)
-    addLog(game:GetService("Players").LocalPlayer.Name, purchasedId, wasPurchased, listenerTabFrame)
+	if loopActive then
+		return
+	end
+	addLog(game:GetService("Players").LocalPlayer.Name, purchasedId, wasPurchased, listenerTabFrame)
 end)
 
 fadeIn(mainbg, FADE_TIME)
