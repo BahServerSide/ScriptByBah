@@ -1,0 +1,4536 @@
+--[[
+	==========================================================
+	 GUI BUILDER TOOL - Roblox (v3)
+	==========================================================
+	- Bounding Box: só contorno + 8 bolas (4 cantos + 2 H + 2 V)
+	- Resize não altera posição indevidamente / Move não altera Size
+	- Add Element popup 210x200
+	- ActionBar 27px, sem close no Explorer
+	- Indentação hierárquica no Explorer + ScrollingFrame
+	- Editor de Source para LocalScript/ModuleScript
+	- Janela de código menor + botão Copiar
+	- Temas Black/White
+	==========================================================
+]]
+
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local Workspace = game:GetService("Workspace")
+local RunService = game:GetService("RunService")
+local GuiService = game:GetService("GuiService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-------------------------------------------------
+-- THEMES
+-------------------------------------------------
+local THEMES = {
+	Black = {
+		Background  = Color3.fromRGB(24, 24, 24),
+		Panel       = Color3.fromRGB(32, 32, 32),
+		PanelAlt    = Color3.fromRGB(40, 40, 40),
+		Divider     = Color3.fromRGB(50, 50, 50),
+		Button      = Color3.fromRGB(45, 45, 45),
+		ButtonHover = Color3.fromRGB(58, 58, 58),
+		Accent      = Color3.fromRGB(90, 130, 200),
+		Text        = Color3.fromRGB(225, 225, 225),
+		SubText     = Color3.fromRGB(160, 160, 160),
+		RowSelected = Color3.fromRGB(55, 70, 90),
+		Danger      = Color3.fromRGB(180, 60, 60),
+	},
+	White = {
+		Background  = Color3.fromRGB(245, 245, 245),
+		Panel       = Color3.fromRGB(255, 255, 255),
+		PanelAlt    = Color3.fromRGB(235, 235, 235),
+		Divider     = Color3.fromRGB(200, 200, 200),
+		Button      = Color3.fromRGB(230, 230, 230),
+		ButtonHover = Color3.fromRGB(210, 210, 210),
+		Accent      = Color3.fromRGB(70, 120, 200),
+		Text        = Color3.fromRGB(30, 30, 30),
+		SubText     = Color3.fromRGB(100, 100, 100),
+		RowSelected = Color3.fromRGB(200, 220, 255),
+		Danger      = Color3.fromRGB(200, 60, 60),
+	},
+}
+
+local THEME = {}
+for k, v in pairs(THEMES.Black) do THEME[k] = v end
+
+-------------------------------------------------
+-- ICONS
+-------------------------------------------------
+local ICONS = {
+	Gear            = "rbxassetid://6578871732",
+	Close           = "rbxassetid://110786993356448",
+	Save            = "rbxassetid://126116963775616",
+	GuiToLua        = "rbxassetid://97321022666868",
+	Properties      = "rbxassetid://113179976918783",
+	Explorer        = "rbxassetid://87462136296578",
+	Settings        = "rbxassetid://126116963775616",
+	Plus            = "rbxassetid://111774323017047",
+	Delete          = "rbxassetid://75830115088395",
+	Copy            = "rbxassetid://78979572434545",
+	Paste           = "rbxassetid://125851897718493",
+	ToggleCheck     = "rbxassetid://6401617475",
+	GradientArrow   = "rbxassetid://81889066747907",
+	SaveNew         = "rbxassetid://91865663406119",
+	EditSave        = "rbxassetid://120239476110475",
+	LoadSave        = "rbxassetid://91221896066807",
+	UpdateSave      = "rbxassetid://126116963775616",
+	DeleteSave      = "rbxassetid://126279426372342",
+}
+
+-------------------------------------------------
+-- UTILS
+-------------------------------------------------
+local BORDERED_CLASSES = {
+	Frame = true, TextButton = true, TextLabel = true, TextBox = true,
+	ImageLabel = true, ImageButton = true, ScrollingFrame = true,
+	VideoFrame = true, CanvasGroup = true,
+}
+
+local function new(className, props, children)
+	local inst = Instance.new(className)
+	if BORDERED_CLASSES[className] then
+		inst.BorderSizePixel = 0
+	end
+	for prop, value in pairs(props or {}) do
+		inst[prop] = value
+	end
+	for _, child in ipairs(children or {}) do
+		child.Parent = inst
+	end
+	return inst
+end
+
+local function round(number, decimals)
+	local mult = 10 ^ (decimals or 0)
+	return math.floor(number * mult + 0.5) / mult
+end
+
+local function colorToHex(color)
+	return string.format("%02X%02X%02X",
+		math.floor(color.R * 255 + 0.5),
+		math.floor(color.G * 255 + 0.5),
+		math.floor(color.B * 255 + 0.5))
+end
+
+local function hexToColor(hex)
+	hex = hex:gsub("#", ""):gsub("%s", "")
+	if #hex ~= 6 then return nil end
+	local r = tonumber(hex:sub(1, 2), 16)
+	local g = tonumber(hex:sub(3, 4), 16)
+	local b = tonumber(hex:sub(5, 6), 16)
+	if not (r and g and b) then return nil end
+	return Color3.fromRGB(r, g, b)
+end
+
+-- Inset correction (0 if source ScreenGui also ignores GuiInset)
+local function getInsetCorrection(inst)
+	local node = inst
+	while node and not node:IsA("ScreenGui") do
+		node = node.Parent
+	end
+	if node and node.IgnoreGuiInset then
+		return Vector2.new(0, 0)
+	end
+	return GuiService:GetGuiInset()
+end
+
+-- Drag tool windows
+local function makeDraggable(frame, handle)
+	local dragging = false
+	local dragStart, startPos
+
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+			local delta = input.Position - dragStart
+			frame.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+local function isOverlay(inst)
+	return inst.Name:sub(1, 2) == "__"
+end
+
+-------------------------------------------------
+-- DATA TABLES
+-------------------------------------------------
+local CLASS_LABELS_PT = {
+	Frame = "Frame",
+	ImageButton = "Button Image",
+	TextButton = "Button Text",
+	ImageLabel = "Image Label",
+	TextLabel = "Text Label",
+	TextBox = "TextBox",
+	UICorner = "UI Corner",
+	UIStroke = "UI Stroke",
+	UIListLayout = "UI List Layout",
+	UIGradient = "UI Gradient",
+	UIScale = "UI Scale",
+	ScrollingFrame = "Scrolling Frame",
+	VideoFrame = "Video Frame",
+	UIDragDetector = "UI Drag Detector",
+	UIFlexItem = "UI Flex Item",
+	UIPadding = "UI Padding",
+	UIGridLayout = "UI Grid Layout",
+	UIPageLayout = "UI Page Layout",
+	UISizeConstraint = "UI Size Constraint",
+	Folder = "Folder",
+	Color3Value = "Color3 Value",
+	UIAspectRatioConstraint = "UI Aspect Ratio Constraint",
+	CanvasGroup = "Canvas Group",
+	Path2D = "Path2D",
+	UITableLayout = "UI Table Layout",
+	UITextSizeConstraint = "UI Text Size Constraint",
+	LocalScript = "Local Script",
+	ModuleScript = "Module Script",
+	ScreenGui = "GUI de Tela",
+}
+
+local ADD_ELEMENT_CLASSES = {
+	"Frame", "ImageButton", "TextButton", "ImageLabel", "TextLabel", "TextBox",
+	"UICorner", "UIStroke", "UIListLayout", "UIGradient", "UIScale",
+	"ScrollingFrame", "VideoFrame", "UIDragDetector", "UIFlexItem", "UIPadding",
+	"UIGridLayout", "UIPageLayout", "UISizeConstraint", "Folder", "Color3Value",
+	"UIAspectRatioConstraint", "CanvasGroup", "Path2D", "UITableLayout",
+	"UITextSizeConstraint", "LocalScript", "ModuleScript",
+}
+
+local CLASS_DEFAULTS = {
+	Frame = {
+		Size = UDim2.new(0, 150, 0, 50),
+		BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+	},
+	TextButton = {
+		Size = UDim2.new(0, 140, 0, 36),
+		BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+		Text = "Button", TextColor3 = Color3.fromRGB(240, 240, 240),
+		TextSize = 14, Font = Enum.Font.Gotham,
+	},
+	TextLabel = {
+		Size = UDim2.new(0, 140, 0, 30),
+		BackgroundTransparency = 1,
+		Text = "Label", TextColor3 = Color3.fromRGB(240, 240, 240),
+		TextSize = 14, Font = Enum.Font.Gotham,
+	},
+	TextBox = {
+		Size = UDim2.new(0, 140, 0, 32),
+		BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+		Text = "", PlaceholderText = "Text box",
+		TextColor3 = Color3.fromRGB(240, 240, 240),
+		TextSize = 14, Font = Enum.Font.Gotham, ClearTextOnFocus = false,
+	},
+	ImageButton = {
+		Size = UDim2.new(0, 100, 0, 100),
+		BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+		Image = "",
+	},
+	ImageLabel = {
+		Size = UDim2.new(0, 100, 0, 100),
+		BackgroundColor3 = Color3.fromRGB(60, 60, 60),
+		Image = "",
+	},
+	ScrollingFrame = {
+		Size = UDim2.new(0, 200, 0, 150),
+		BackgroundColor3 = Color3.fromRGB(50, 50, 50),
+		ScrollBarThickness = 8,
+		ScrollBarImageColor3 = Color3.fromRGB(230, 230, 230),
+		-- Canvas bigger than Size so it actually scrolls
+				CanvasSize = UDim2.new(0, 200, 0, 300),
+		AutomaticCanvasSize = Enum.AutomaticSize.None,
+	},
+	VideoFrame = {
+		Size = UDim2.new(0, 200, 0, 120),
+		BackgroundColor3 = Color3.fromRGB(30, 30, 30),
+		Video = "",
+	},
+	CanvasGroup = {
+		Size = UDim2.new(0, 150, 0, 100),
+		BackgroundColor3 = Color3.fromRGB(55, 55, 55),
+		GroupTransparency = 0,
+	},
+	UICorner = { CornerRadius = UDim.new(0, 8) },
+	UIStroke = {
+		Color = Color3.fromRGB(255, 255, 255),
+		Thickness = 1, Transparency = 0,
+	},
+	UIListLayout = {
+		Padding = UDim.new(0, 4),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		FillDirection = Enum.FillDirection.Vertical,
+	},
+	UIGridLayout = {
+		CellSize = UDim2.new(0, 80, 0, 80),
+		CellPadding = UDim2.new(0, 6, 0, 6),
+		SortOrder = Enum.SortOrder.LayoutOrder,
+	},
+	UIPadding = {
+		PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8),
+		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
+	},
+	UIScale = { Scale = 1 },
+	UIGradient = { Rotation = 0, Enabled = true },
+	UIAspectRatioConstraint = {
+		AspectRatio = 1,
+		AspectType = Enum.AspectType.FitWithinMaxSize,
+	},
+	UISizeConstraint = {
+		MinSize = Vector2.new(0, 0),
+		MaxSize = Vector2.new(math.huge, math.huge),
+	},
+	UITextSizeConstraint = { MinTextSize = 1, MaxTextSize = 100 },
+	UIPageLayout = {
+		Animated = true, Circular = false,
+		Padding = UDim.new(0, 0), TweenTime = 0.3,
+	},
+	UITableLayout = {
+		Padding = UDim2.new(0, 4, 0, 4),
+		FillEmptySpaceColumns = false,
+		FillEmptySpaceRows = false,
+	},
+	UIFlexItem = {
+		FlexMode = Enum.UIFlexMode.None,
+		GrowRatio = 0, ShrinkRatio = 0,
+	},
+	UIDragDetector = {},
+	Path2D = {
+		Thickness = 2,
+		Color3 = Color3.fromRGB(255, 255, 255),
+		Closed = false, Visible = true,
+	},
+	Folder = {},
+	Color3Value = { Value = Color3.fromRGB(255, 255, 255) },
+	LocalScript = { Source = "-- LocalScript\nprint(\"Hello from LocalScript\")\n" },
+	ModuleScript = { Source = "local module = {}\n\nreturn module\n" },
+}
+
+local PROPERTY_SCHEMA = {
+	{Key = "AbsolutePosition", Label = "Absolute position", Type = "readonly"},
+	{Key = "AbsoluteRotation", Label = "Absolute rotation", Type = "readonly"},
+	{Key = "AbsoluteSize", Label = "Absolute size", Type = "readonly"},
+	{Key = "Active", Label = "Active", Type = "bool"},
+	{Key = "AnchorPoint", Label = "Anchor point", Type = "vector2"},
+	{Key = "Archivable", Label = "Archivable", Type = "bool"},
+	{Key = "AutoLocalize", Label = "Auto localize", Type = "bool"},
+	{Key = "AutomaticSize", Label = "Automatic size", Type = "enum", Enum = Enum.AutomaticSize},
+	{Key = "BackgroundColor3", Label = "Background color", Type = "color"},
+	{Key = "BackgroundTransparency", Label = "Background transparency", Type = "number"},
+	{Key = "BorderColor3", Label = "Border color", Type = "color"},
+	{Key = "BorderMode", Label = "Border mode", Type = "enum", Enum = Enum.BorderMode},
+	{Key = "BorderSizePixel", Label = "Border pixel", Type = "number"},
+	{Key = "ClipsDescendants", Label = "Clips descendants", Type = "bool"},
+	{Key = "LayoutOrder", Label = "Layout order", Type = "number"},
+	{Key = "Name", Label = "Name", Type = "string"},
+	{Key = "Position", Label = "Position", Type = "udim2"},
+	{Key = "Rotation", Label = "Rotation", Type = "number"},
+	{Key = "Size", Label = "Size", Type = "udim2"},
+	{Key = "SizeConstraint", Label = "Size constraint", Type = "enum", Enum = Enum.SizeConstraint},
+	{Key = "Visible", Label = "Visible", Type = "bool"},
+	{Key = "ZIndex", Label = "ZIndex", Type = "number"},
+	{Key = "Text", Label = "Text", Type = "string"},
+	{Key = "TextColor3", Label = "Text color", Type = "color"},
+	{Key = "TextSize", Label = "Text size", Type = "number"},
+	{Key = "TextScaled", Label = "Text scaled", Type = "bool"},
+	{Key = "TextWrapped", Label = "Text wrapped", Type = "bool"},
+	{Key = "Font", Label = "Font", Type = "enum", Enum = Enum.Font},
+	{Key = "Image", Label = "Image (id)", Type = "string"},
+	{Key = "ImageColor3", Label = "Image color", Type = "color"},
+	{Key = "ScaleType", Label = "Scale type", Type = "enum", Enum = Enum.ScaleType},
+	{Key = "CornerRadius", Label = "Corner radius", Type = "udim"},
+	{Key = "Color", Label = "Stroke color", Type = "color"},
+	{Key = "Thickness", Label = "Thickness", Type = "number"},
+	{Key = "Transparency", Label = "Transparency", Type = "number"},
+	{Key = "ClassName", Label = "Class name", Type = "readonly"},
+	{Key = "Padding", Label = "Padding", Type = "udim"},
+	{Key = "FillDirection", Label = "Fill direction", Type = "enum", Enum = Enum.FillDirection},
+	{Key = "SortOrder", Label = "Sort order", Type = "enum", Enum = Enum.SortOrder},
+	{Key = "HorizontalAlignment", Label = "Horizontal alignment", Type = "enum", Enum = Enum.HorizontalAlignment},
+	{Key = "VerticalAlignment", Label = "Vertical alignment", Type = "enum", Enum = Enum.VerticalAlignment},
+	{Key = "CellSize", Label = "Cell size", Type = "udim2"},
+	{Key = "CellPadding", Label = "Cell padding", Type = "udim2"},
+	{Key = "Scale", Label = "Scale", Type = "number"},
+	{Key = "AspectRatio", Label = "Ratio", Type = "number"},
+	{Key = "MinSize", Label = "Min size", Type = "vector2"},
+	{Key = "MaxSize", Label = "Max size", Type = "vector2"},
+	{Key = "MinTextSize", Label = "Min text size", Type = "number"},
+	{Key = "MaxTextSize", Label = "Max text size", Type = "number"},
+	{Key = "GroupTransparency", Label = "Group transparency", Type = "number"},
+	{Key = "GroupColor3", Label = "Group color", Type = "color"},
+	{Key = "Video", Label = "Video (id)", Type = "string"},
+	{Key = "Value", Label = "Value", Type = "color"},
+	{Key = "Enabled", Label = "Enabled", Type = "bool"},
+	{Key = "Offset", Label = "Offset", Type = "vector2"},
+	{Key = "Closed", Label = "Closed", Type = "bool"},
+	{Key = "Color3", Label = "Color", Type = "color"},
+	{Key = "FlexMode", Label = "Flex mode", Type = "enum", Enum = Enum.UIFlexMode},
+	{Key = "GrowRatio", Label = "Grow ratio", Type = "number"},
+	{Key = "ShrinkRatio", Label = "Shrink ratio", Type = "number"},
+	{Key = "Animated", Label = "Animated", Type = "bool"},
+	{Key = "Circular", Label = "Circular", Type = "bool"},
+	{Key = "TweenTime", Label = "Tween time", Type = "number"},
+	{Key = "ScrollBarThickness", Label = "Bar thickness", Type = "number"},
+	{Key = "ScrollingDirection", Label = "Scroll direction", Type = "enum", Enum = Enum.ScrollingDirection},
+	{Key = "VerticalScrollBarPosition", Label = "Vertical bar position", Type = "enum", Enum = Enum.VerticalScrollBarPosition},
+	{Key = "VerticalScrollBarInset", Label = "Vertical bar inset", Type = "enum", Enum = Enum.ScrollBarInset},
+	{Key = "HorizontalScrollBarInset", Label = "Horizontal bar inset", Type = "enum", Enum = Enum.ScrollBarInset},
+	{Key = "CanvasSize", Label = "Canvas size", Type = "udim2"},
+	{Key = "AutomaticCanvasSize", Label = "Automatic canvas", Type = "enum", Enum = Enum.AutomaticSize},
+	{Key = "PaddingTop", Label = "Top padding", Type = "udim"},
+	{Key = "PaddingBottom", Label = "Bottom padding", Type = "udim"},
+	{Key = "PaddingLeft", Label = "Left padding", Type = "udim"},
+	{Key = "PaddingRight", Label = "Right padding", Type = "udim"},
+	{Key = "Source", Label = "Source (Use)", Type = "source"},
+}
+
+local EXPORTABLE_PROPS = {
+	Frame = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "BorderColor3", "BorderSizePixel", "ClipsDescendants", "Visible", "ZIndex"},
+	TextButton = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "Visible", "ZIndex", "Text", "TextColor3", "TextSize", "Font", "TextScaled", "TextWrapped"},
+	TextLabel = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "Visible", "ZIndex", "Text", "TextColor3", "TextSize", "Font", "TextScaled", "TextWrapped"},
+	TextBox = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "Visible", "ZIndex", "Text", "TextColor3", "TextSize", "Font"},
+	ImageLabel = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "Visible", "ZIndex", "Image", "ImageColor3", "ScaleType"},
+	ImageButton = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "Visible", "ZIndex", "Image", "ImageColor3", "ScaleType"},
+	ScrollingFrame = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "BorderSizePixel", "Visible", "ZIndex", "ScrollBarThickness", "ScrollBarImageColor3", "CanvasSize", "AutomaticCanvasSize", "ClipsDescendants", "ScrollingDirection", "VerticalScrollBarPosition", "VerticalScrollBarInset", "HorizontalScrollBarInset"},
+	VideoFrame = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "Visible", "ZIndex", "Video"},
+	CanvasGroup = {"Name", "Size", "Position", "AnchorPoint", "Rotation", "BackgroundColor3", "BackgroundTransparency", "Visible", "ZIndex", "GroupTransparency", "GroupColor3"},
+	UICorner = {"Name", "CornerRadius"},
+	UIStroke = {"Name", "Color", "Thickness", "Transparency"},
+	UIListLayout = {"Name", "Padding", "FillDirection", "SortOrder", "HorizontalAlignment", "VerticalAlignment"},
+	UIGridLayout = {"Name", "CellSize", "CellPadding", "SortOrder", "FillDirection"},
+	UIPadding = {"Name", "PaddingTop", "PaddingBottom", "PaddingLeft", "PaddingRight"},
+	UIScale = {"Name", "Scale"},
+	UIGradient = {"Name", "Rotation", "Enabled", "Offset"},
+	UIAspectRatioConstraint = {"Name", "AspectRatio"},
+	UISizeConstraint = {"Name", "MinSize", "MaxSize"},
+	UITextSizeConstraint = {"Name", "MinTextSize", "MaxTextSize"},
+	UIPageLayout = {"Name", "Animated", "Circular", "Padding", "TweenTime"},
+	UITableLayout = {"Name", "Padding"},
+	UIFlexItem = {"Name", "FlexMode", "GrowRatio", "ShrinkRatio"},
+	UIDragDetector = {"Name"},
+	Path2D = {"Name", "Thickness", "Color3", "Closed", "Visible", "ZIndex"},
+	Folder = {"Name"},
+	Color3Value = {"Name", "Value"},
+	LocalScript = {"Name"},
+	ModuleScript = {"Name"},
+}
+
+local function luaValue(value)
+	local t = typeof(value)
+	if t == "string" then
+		return string.format("%q", value)
+	elseif t == "boolean" or t == "number" then
+		return tostring(value)
+	elseif t == "UDim2" then
+		return string.format("UDim2.new(%s, %s, %s, %s)",
+			round(value.X.Scale, 4), value.X.Offset, round(value.Y.Scale, 4), value.Y.Offset)
+	elseif t == "UDim" then
+		return string.format("UDim.new(%s, %s)", round(value.Scale, 4), value.Offset)
+	elseif t == "Color3" then
+		return string.format("Color3.fromRGB(%d, %d, %d)",
+			math.floor(value.R * 255 + 0.5), math.floor(value.G * 255 + 0.5), math.floor(value.B * 255 + 0.5))
+	elseif t == "Vector2" then
+		return string.format("Vector2.new(%s, %s)", round(value.X, 4), round(value.Y, 4))
+	elseif t == "EnumItem" then
+		return "Enum." .. tostring(value.EnumType) .. "." .. value.Name
+	else
+		return tostring(value)
+	end
+end
+
+-------------------------------------------------
+-- ROOT
+-------------------------------------------------
+local oldGui = PlayerGui:FindFirstChild("GuiBuilderTool")
+if oldGui then oldGui:Destroy() end
+
+local screenGui = new("ScreenGui", {
+	Name = "GuiBuilderTool",
+	ResetOnSpawn = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	DisplayOrder = 1000,
+	IgnoreGuiInset = true,
+	Parent = PlayerGui,
+})
+
+local projectGui = PlayerGui:FindFirstChild("MinhaInterface")
+if not projectGui then
+	projectGui = new("ScreenGui", {
+		Name = "MinhaInterface",
+		ResetOnSpawn = false,
+		DisplayOrder = 0,
+		Parent = PlayerGui,
+	})
+end
+local userProjectGui = projectGui
+
+-------------------------------------------------
+-- STATE
+-------------------------------------------------
+local selected = nil
+local elementCounter = 0
+local explorerRows = {}
+local addTargetInstance = nil
+local savedSnapshot = nil
+local clipboard = nil
+local currentThemeName = "Black"
+local sourceEditorTarget = nil
+local alignmentEnabled = true
+local alignmentLines = {}
+local snapThreshold = 8 -- pixels
+
+local highlight, clearHighlight
+local buildPropertyRow, refreshProperties
+local selectInstance
+local buildExplorer, refreshExplorer, clearExplorer
+local addElement, openAddElementPopup
+local updateBoundingBox, destroyBoundingBox, createBoundingBox
+local applyTheme
+local openSourceEditor
+local openColorPicker
+local openGradientEditor
+
+-------------------------------------------------
+-- BOUNDING BOX
+-------------------------------------------------
+local boundingBoxFrame = nil
+local boundingHandles = {}
+local bbConnections = {}
+local isDraggingBB = false
+local isResizingBB = false
+local resizeMode = nil -- "TL","TR","BL","BR","L","R","T","B"
+local dragStartPos = nil
+local startAbsPos = nil
+local startAbsSize = nil
+local startUDimPos = nil
+local startUDimSize = nil
+local tweenSpeed = 0.1
+
+local HANDLE_SIZE = 20
+local ORANGE = Color3.fromRGB(255, 140, 0)
+
+local function clearBBConnections()
+	for _, c in ipairs(bbConnections) do
+		c:Disconnect()
+	end
+	bbConnections = {}
+end
+
+function destroyBoundingBox()
+	clearBBConnections()
+	isDraggingBB = false
+	isResizingBB = false
+	resizeMode = nil
+	if boundingBoxFrame then
+		boundingBoxFrame:Destroy()
+		boundingBoxFrame = nil
+	end
+	boundingHandles = {}
+end
+
+local function getParentAbs(parent)
+	if parent and parent:IsA("GuiObject") then
+		return parent.AbsolutePosition, parent.AbsoluteSize
+	end
+	local cam = Workspace.CurrentCamera
+	local vs = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local origin = Vector2.new(0, 0)
+	if parent and parent:IsA("LayerCollector") and not parent.IgnoreGuiInset then
+		origin = GuiService:GetGuiInset()
+	end
+	return origin, vs
+end
+
+
+-------------------------------------------------
+-- ALIGNMENT GUIDES
+-------------------------------------------------
+local alignmentFolder = new("Folder", { Name = "__AlignmentGuides", Parent = screenGui })
+
+local function clearAlignmentLines()
+	for _, line in ipairs(alignmentLines) do
+		if line and line.Parent then line:Destroy() end
+	end
+	alignmentLines = {}
+end
+
+local function makeAlignLine(isVertical, pos, length, offset, inset)
+	-- Same inset issue as the bounding box
+				inset = inset or GuiService:GetGuiInset()
+	local line = new("Frame", {
+		Name = "__AlignLine",
+		BackgroundColor3 = Color3.fromRGB(255, 80, 180),
+		BackgroundTransparency = 0.25,
+		BorderSizePixel = 0,
+		ZIndex = 9998,
+		Parent = alignmentFolder,
+	})
+	if isVertical then
+		line.Size = UDim2.fromOffset(1, length)
+		line.Position = UDim2.fromOffset(pos + inset.X, offset + inset.Y)
+	else
+		line.Size = UDim2.fromOffset(length, 1)
+		line.Position = UDim2.fromOffset(offset + inset.X, pos + inset.Y)
+	end
+	table.insert(alignmentLines, line)
+	return line
+end
+
+-- Snap against parent and sibling edges
+local function snapToGuides(inst, proposedAbsPos, proposedAbsSize)
+	if not alignmentEnabled or not inst or not inst:IsA("GuiObject") then
+		return proposedAbsPos, proposedAbsSize, {}
+	end
+	clearAlignmentLines()
+
+	local inset = getInsetCorrection(inst)
+	local parent = inst.Parent
+	local parentPos, parentSize
+	if parent and parent:IsA("GuiObject") then
+		parentPos = parent.AbsolutePosition
+		parentSize = parent.AbsoluteSize
+	else
+		local cam = Workspace.CurrentCamera
+		local vs = cam and cam.ViewportSize or Vector2.new(1280, 720)
+		parentPos = Vector2.new(0, 0)
+		parentSize = vs
+	end
+
+	local px, py = proposedAbsPos.X, proposedAbsPos.Y
+	local w, h = proposedAbsSize.X, proposedAbsSize.Y
+	local snappedX, snappedY = px, py
+	local guides = {}
+
+	-- Parent reference points
+	local refsX = {
+		{ pos = parentPos.X, kind = "left" },
+		{ pos = parentPos.X + parentSize.X / 2, kind = "center" },
+		{ pos = parentPos.X + parentSize.X, kind = "right" },
+	}
+	local refsY = {
+		{ pos = parentPos.Y, kind = "top" },
+		{ pos = parentPos.Y + parentSize.Y / 2, kind = "center" },
+		{ pos = parentPos.Y + parentSize.Y, kind = "bottom" },
+	}
+
+	-- Element's own edges
+	local function trySnapX(edgeAbs)
+		for _, ref in ipairs(refsX) do
+			if math.abs(edgeAbs - ref.pos) <= snapThreshold then
+				return ref.pos, ref
+			end
+		end
+		return nil, nil
+	end
+	local function trySnapY(edgeAbs)
+		for _, ref in ipairs(refsY) do
+			if math.abs(edgeAbs - ref.pos) <= snapThreshold then
+				return ref.pos, ref
+			end
+		end
+		return nil, nil
+	end
+
+	-- left
+	local s, ref = trySnapX(px)
+	if s then
+		snappedX = s
+		table.insert(guides, { vertical = true, pos = s })
+	else
+		-- center
+		s, ref = trySnapX(px + w / 2)
+		if s then
+			snappedX = s - w / 2
+			table.insert(guides, { vertical = true, pos = s })
+		else
+			-- right
+			s, ref = trySnapX(px + w)
+			if s then
+				snappedX = s - w
+				table.insert(guides, { vertical = true, pos = s })
+			end
+		end
+	end
+
+	s, ref = trySnapY(py)
+	if s then
+		snappedY = s
+		table.insert(guides, { vertical = false, pos = s })
+	else
+		s, ref = trySnapY(py + h / 2)
+		if s then
+			snappedY = s - h / 2
+			table.insert(guides, { vertical = false, pos = s })
+		else
+			s, ref = trySnapY(py + h)
+			if s then
+				snappedY = s - h
+				table.insert(guides, { vertical = false, pos = s })
+			end
+		end
+	end
+
+	-- Snap against siblings
+	if parent then
+		for _, sib in ipairs(parent:GetChildren()) do
+			if sib ~= inst and sib:IsA("GuiObject") and not isOverlay(sib) then
+				local sx, sy = sib.AbsolutePosition.X, sib.AbsolutePosition.Y
+				local sw, sh = sib.AbsoluteSize.X, sib.AbsoluteSize.Y
+				local sibRefsX = { sx, sx + sw / 2, sx + sw }
+				local sibRefsY = { sy, sy + sh / 2, sy + sh }
+				for _, rp in ipairs(sibRefsX) do
+					if math.abs(snappedX - rp) <= snapThreshold then
+						snappedX = rp
+						table.insert(guides, { vertical = true, pos = rp })
+					elseif math.abs(snappedX + w / 2 - rp) <= snapThreshold then
+						snappedX = rp - w / 2
+						table.insert(guides, { vertical = true, pos = rp })
+					elseif math.abs(snappedX + w - rp) <= snapThreshold then
+						snappedX = rp - w
+						table.insert(guides, { vertical = true, pos = rp })
+					end
+				end
+				for _, rp in ipairs(sibRefsY) do
+					if math.abs(snappedY - rp) <= snapThreshold then
+						snappedY = rp
+						table.insert(guides, { vertical = false, pos = rp })
+					elseif math.abs(snappedY + h / 2 - rp) <= snapThreshold then
+						snappedY = rp - h / 2
+						table.insert(guides, { vertical = false, pos = rp })
+					elseif math.abs(snappedY + h - rp) <= snapThreshold then
+						snappedY = rp - h
+						table.insert(guides, { vertical = false, pos = rp })
+					end
+				end
+			end
+		end
+	end
+
+	-- Draw guide lines
+	for _, g in ipairs(guides) do
+		if g.vertical then
+			makeAlignLine(true, g.pos, parentSize.Y, parentPos.Y, inset)
+		else
+			makeAlignLine(false, g.pos, parentSize.X, parentPos.X, inset)
+		end
+	end
+
+	return Vector2.new(snappedX, snappedY), proposedAbsSize, guides
+end
+
+local function applySnappedPosition(inst, absPos, absSize)
+	local parentPos = getParentAbs(inst.Parent)
+	local relX = absPos.X - parentPos.X
+	local relY = absPos.Y - parentPos.Y
+	inst.Position = UDim2.new(0, relX, 0, relY)
+	inst.Size = UDim2.new(0, absSize.X, 0, absSize.Y)
+end
+
+
+function updateBoundingBox()
+	if not selected or not selected:IsA("GuiObject") or not boundingBoxFrame then return end
+	if not selected.Parent then
+		destroyBoundingBox()
+		return
+	end
+
+	-- Mirror in the SAME parent (avoids GuiInset teleport)
+	if boundingBoxFrame.Parent ~= selected.Parent then
+		boundingBoxFrame.Parent = selected.Parent
+	end
+	boundingBoxFrame.AnchorPoint = selected.AnchorPoint
+	boundingBoxFrame.Position = selected.Position
+	boundingBoxFrame.Size = selected.Size
+	boundingBoxFrame.Rotation = selected.Rotation
+	boundingBoxFrame.ZIndex = (tonumber(selected.ZIndex) or 1) + 50
+
+	local hs = HANDLE_SIZE
+	local positions = {
+		TL = UDim2.new(0, -hs/2, 0, -hs/2),
+		TR = UDim2.new(1, -hs/2, 0, -hs/2),
+		BL = UDim2.new(0, -hs/2, 1, -hs/2),
+		BR = UDim2.new(1, -hs/2, 1, -hs/2),
+		T  = UDim2.new(0.5, -hs/2, 0, -hs/2),
+		B  = UDim2.new(0.5, -hs/2, 1, -hs/2),
+		L  = UDim2.new(0, -hs/2, 0.5, -hs/2),
+		R  = UDim2.new(1, -hs/2, 0.5, -hs/2),
+	}
+	for name, handle in pairs(boundingHandles) do
+		if handle and handle.Parent then
+			handle.Position = positions[name]
+			handle.ZIndex = boundingBoxFrame.ZIndex + 1
+		end
+	end
+end
+
+function createBoundingBox(inst)
+	destroyBoundingBox()
+	if not inst or not inst:IsA("GuiObject") then return end
+
+	-- Fully transparent frame (outline only)
+	boundingBoxFrame = new("Frame", {
+		Name = "__BoundingBox",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 10000,
+		Active = true,
+		Parent = inst.Parent or screenGui,
+	})
+
+	new("UIStroke", {
+		Color = ORANGE,
+		Thickness = 2,
+		Transparency = 0.6, -- opacidade 0.40
+		Parent = boundingBoxFrame,
+	})
+
+	local function makeHandle(name)
+		local h = new("Frame", {
+			Name = "__Handle_" .. name,
+			Size = UDim2.fromOffset(HANDLE_SIZE, HANDLE_SIZE),
+			BackgroundColor3 = ORANGE,
+			BackgroundTransparency = 0.6, -- opacidade 0.40, sem contorno (sem UIStroke)
+			BorderSizePixel = 0,
+			ZIndex = 10001,
+			Active = true,
+			Parent = boundingBoxFrame,
+		})
+		new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = h })
+		boundingHandles[name] = h
+		return h
+	end
+
+	local hTL = makeHandle("TL")
+	local hTR = makeHandle("TR")
+	local hBL = makeHandle("BL")
+	local hBR = makeHandle("BR")
+	local hT  = makeHandle("T")
+	local hB  = makeHandle("B")
+	local hL  = makeHandle("L")
+	local hR  = makeHandle("R")
+
+	updateBoundingBox()
+
+	local function startDrag(input)
+		if not selected or not selected:IsA("GuiObject") then return end
+		isDraggingBB = true
+		isResizingBB = false
+		resizeMode = nil
+		dragStartPos = input.Position
+		startUDimPos = selected.Position
+		startAbsPos = selected.AbsolutePosition
+		startAbsSize = selected.AbsoluteSize
+	end
+
+	local function doDrag(input)
+		if not isDraggingBB or not selected then return end
+		local delta = input.Position - dragStartPos
+		-- Proposed abs position from mouse delta
+						local proposedAbsPos = Vector2.new(startAbsPos.X + delta.X, startAbsPos.Y + delta.Y)
+		local snappedAbsPos = snapToGuides(selected, proposedAbsPos, startAbsSize)
+		local finalDelta = Vector2.new(snappedAbsPos.X - startAbsPos.X, snappedAbsPos.Y - startAbsPos.Y)
+		-- Direct delta on Position (works anywhere)
+		selected.Position = UDim2.new(
+			startUDimPos.X.Scale,
+			startUDimPos.X.Offset + finalDelta.X,
+			startUDimPos.Y.Scale,
+			startUDimPos.Y.Offset + finalDelta.Y
+		)
+		updateBoundingBox()
+	end
+
+	local function startResize(input, mode)
+		if not selected or not selected:IsA("GuiObject") then return end
+		isResizingBB = true
+		isDraggingBB = false
+		resizeMode = mode
+		dragStartPos = input.Position
+		startAbsPos = selected.AbsolutePosition
+		startAbsSize = selected.AbsoluteSize
+		startUDimPos = selected.Position
+		startUDimSize = selected.Size
+	end
+
+	local function doResize(input)
+		if not isResizingBB or not selected or not resizeMode then return end
+		local delta = input.Position - dragStartPos
+		local ap = selected.AnchorPoint
+		local newW = startAbsSize.X
+		local newH = startAbsSize.Y
+
+		local moveL = (resizeMode == "L" or resizeMode == "TL" or resizeMode == "BL")
+		local moveR = (resizeMode == "R" or resizeMode == "TR" or resizeMode == "BR")
+		local moveT = (resizeMode == "T" or resizeMode == "TL" or resizeMode == "TR")
+		local moveB = (resizeMode == "B" or resizeMode == "BL" or resizeMode == "BR")
+
+		if moveR then newW = math.max(16, startAbsSize.X + delta.X) end
+		if moveL then newW = math.max(16, startAbsSize.X - delta.X) end
+		if moveB then newH = math.max(16, startAbsSize.Y + delta.Y) end
+		if moveT then newH = math.max(16, startAbsSize.Y - delta.Y) end
+
+		-- Keep opposite edge fixed
+		local ox, oy = 0, 0
+		if moveL and not moveR then
+			ox = (startAbsSize.X - newW) * (1 - ap.X)
+		elseif moveR and not moveL then
+			ox = (newW - startAbsSize.X) * ap.X
+		end
+		if moveT and not moveB then
+			oy = (startAbsSize.Y - newH) * (1 - ap.Y)
+		elseif moveB and not moveT then
+			oy = (newH - startAbsSize.Y) * ap.Y
+		end
+
+		selected.Position = UDim2.new(
+			startUDimPos.X.Scale, startUDimPos.X.Offset + ox,
+			startUDimPos.Y.Scale, startUDimPos.Y.Offset + oy
+		)
+		selected.Size = UDim2.fromOffset(newW, newH)
+		updateBoundingBox()
+	end
+
+	local function endInteraction()
+		isDraggingBB = false
+		isResizingBB = false
+		resizeMode = nil
+		clearAlignmentLines()
+		refreshProperties()
+	end
+
+	-- Drag body (move)
+	table.insert(bbConnections, boundingBoxFrame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+			startDrag(input)
+			local conn
+			conn = input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					endInteraction()
+					conn:Disconnect()
+				end
+			end)
+		end
+	end))
+
+	local function connectHandle(handle, mode)
+		table.insert(bbConnections, handle.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+				or input.UserInputType == Enum.UserInputType.Touch then
+				startResize(input, mode)
+				local conn
+				conn = input.Changed:Connect(function()
+					if input.UserInputState == Enum.UserInputState.End then
+						endInteraction()
+						conn:Disconnect()
+					end
+				end)
+			end
+		end))
+	end
+
+	connectHandle(hTL, "TL")
+	connectHandle(hTR, "TR")
+	connectHandle(hBL, "BL")
+	connectHandle(hBR, "BR")
+	connectHandle(hT, "T")
+	connectHandle(hB, "B")
+	connectHandle(hL, "L")
+	connectHandle(hR, "R")
+
+	table.insert(bbConnections, UserInputService.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch then
+			if isDraggingBB then
+				doDrag(input)
+			elseif isResizingBB then
+				doResize(input)
+			end
+		end
+	end))
+
+	table.insert(bbConnections, RunService.RenderStepped:Connect(function()
+		if selected and selected:IsA("GuiObject") and selected.Parent and boundingBoxFrame then
+			if not isDraggingBB and not isResizingBB then
+				updateBoundingBox()
+			end
+		end
+	end))
+end
+
+-------------------------------------------------
+-- SOURCE EDITOR
+-------------------------------------------------
+local sourceEditorWindow = new("Frame", {
+	Name = "SourceEditorWindow",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.new(0.6, 0, 0.75, 0),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 25,
+	Parent = screenGui,
+})
+
+local sourceEditorTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 25,
+	Parent = sourceEditorWindow,
+})
+
+local sourceEditorTitle = new("TextLabel", {
+	Size = UDim2.new(1, -36, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Source Editor",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 25,
+	Parent = sourceEditorTop,
+})
+
+local sourceEditorClose = new("ImageButton", {
+	Size = UDim2.new(0, 22, 0, 22),
+	Position = UDim2.new(1, -26, 0, 3),
+	BackgroundTransparency = 1,
+	Image = ICONS.Close,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 26,
+	Parent = sourceEditorTop,
+})
+sourceEditorClose.MouseButton1Click:Connect(function()
+	-- save before closing
+	if sourceEditorTarget and sourceEditorTarget:IsA("LuaSourceContainer") then
+		local box = sourceEditorWindow:FindFirstChild("SourceBox", true)
+		if box then
+			sourceEditorTarget.Source = box.Text
+		end
+	end
+	sourceEditorWindow.Visible = false
+	sourceEditorTarget = nil
+end)
+
+makeDraggable(sourceEditorWindow, sourceEditorTop)
+
+local sourceScroll = new("ScrollingFrame", {
+	Size = UDim2.new(1, -12, 1, -70),
+	Position = UDim2.new(0, 6, 0, 34),
+	BackgroundColor3 = THEME.PanelAlt,
+	ScrollBarThickness = 6,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ZIndex = 25,
+	Parent = sourceEditorWindow,
+})
+
+local sourceBox = new("TextBox", {
+	Name = "SourceBox",
+	Size = UDim2.new(1, -8, 0, 0),
+	Position = UDim2.new(0, 4, 0, 4),
+	AutomaticSize = Enum.AutomaticSize.Y,
+	BackgroundTransparency = 1,
+	ClearTextOnFocus = false,
+	MultiLine = true,
+	TextEditable = true,
+	Font = Enum.Font.Code,
+	Text = "",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	TextWrapped = true,
+	ZIndex = 25,
+	Parent = sourceScroll,
+})
+
+local sourceSaveBtn = new("TextButton", {
+	Size = UDim2.new(0, 100, 0, 28),
+	Position = UDim2.new(1, -110, 1, -34),
+	BackgroundColor3 = THEME.Accent,
+	Font = Enum.Font.GothamBold,
+	Text = "Save",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 13,
+	ZIndex = 25,
+	Parent = sourceEditorWindow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = sourceSaveBtn })
+sourceSaveBtn.MouseButton1Click:Connect(function()
+	if sourceEditorTarget and sourceEditorTarget:IsA("LuaSourceContainer") then
+		sourceEditorTarget.Source = sourceBox.Text
+	end
+	sourceEditorWindow.Visible = false
+	sourceEditorTarget = nil
+end)
+
+function openSourceEditor(scriptInst)
+	if not scriptInst or not scriptInst:IsA("LuaSourceContainer") then return end
+	sourceEditorTarget = scriptInst
+	sourceEditorTitle.Text = "Source - " .. scriptInst.Name
+	-- keep existing text
+	sourceBox.Text = scriptInst.Source or ""
+	sourceEditorWindow.Visible = true
+end
+
+-------------------------------------------------
+-- EXPLORER
+-------------------------------------------------
+local explorerWindow = new("Frame", {
+	Name = "ExplorerWindow",
+	Size = UDim2.new(0, 250, 0, 360),
+	Position = UDim2.new(0, 20, 0, 60),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	Active = true,
+	Parent = screenGui,
+})
+
+local explorerTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	Parent = explorerWindow,
+})
+
+new("TextLabel", {
+	Size = UDim2.new(1, -10, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "explorer",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = explorerTop,
+})
+
+-- no close button
+
+makeDraggable(explorerWindow, explorerTop)
+
+local explorerList = new("ScrollingFrame", {
+	Name = "ExplorerList",
+	Size = UDim2.new(1, 0, 1, -55), -- espaço para action bar 27px
+	Position = UDim2.new(0, 0, 0, 28),
+	BackgroundTransparency = 1,
+	ScrollBarThickness = 5,
+	ScrollBarImageColor3 = THEME.Divider,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Parent = explorerWindow,
+})
+
+new("UIListLayout", {
+	Padding = UDim.new(0, 0),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = explorerList,
+})
+
+-- Action bar
+local actionBar = new("Frame", {
+	Name = "ActionBar",
+	Size = UDim2.new(1, 0, 0, 27),
+	Position = UDim2.new(0, 0, 1, -27),
+	BackgroundColor3 = THEME.Panel,
+	Parent = explorerWindow,
+})
+
+local function createActionButton(parent, imageId, xOffset)
+	local btn = new("ImageButton", {
+		Size = UDim2.new(0, 22, 0, 22),
+		Position = UDim2.new(0, xOffset, 0.5, -11),
+		BackgroundColor3 = THEME.Button,
+		Image = imageId,
+		ScaleType = Enum.ScaleType.Fit,
+		Parent = parent,
+	})
+	new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = btn })
+	btn.MouseEnter:Connect(function() btn.BackgroundColor3 = THEME.ButtonHover end)
+	btn.MouseLeave:Connect(function() btn.BackgroundColor3 = THEME.Button end)
+	return btn
+end
+
+local deleteBtn = createActionButton(actionBar, ICONS.Delete, 10)
+local copyBtn   = createActionButton(actionBar, ICONS.Copy, 40)
+local pasteBtn  = createActionButton(actionBar, ICONS.Paste, 70)
+
+deleteBtn.MouseButton1Click:Connect(function()
+	if not selected or selected == projectGui then return end
+	if isOverlay(selected) then return end
+	local parent = selected.Parent
+	destroyBoundingBox()
+	selected:Destroy()
+	selected = nil
+	refreshExplorer()
+	if parent and parent.Parent then
+		selectInstance(parent)
+	else
+		selectInstance(projectGui)
+	end
+end)
+
+copyBtn.MouseButton1Click:Connect(function()
+	if not selected or selected == projectGui then return end
+	if isOverlay(selected) then return end
+	clipboard = selected:Clone()
+end)
+
+pasteBtn.MouseButton1Click:Connect(function()
+	if not clipboard or not selected then return end
+	local clone = clipboard:Clone()
+	elementCounter = elementCounter + 1
+	clone.Name = clone.Name .. "_Copy" .. elementCounter
+	clone.Parent = selected
+	refreshExplorer()
+	selectInstance(clone)
+end)
+
+-------------------------------------------------
+-- PROPERTIES
+-------------------------------------------------
+local propertiesWindow = new("Frame", {
+	Name = "PropertiesWindow",
+	Size = UDim2.new(0, 250, 0, 360),
+	Position = UDim2.new(0, 290, 0, 60),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	Active = true,
+	Parent = screenGui,
+})
+
+local propertiesTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	Parent = propertiesWindow,
+})
+
+local propertiesTitle = new("TextLabel", {
+	Size = UDim2.new(1, -14, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "properties",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	Parent = propertiesTop,
+})
+
+makeDraggable(propertiesWindow, propertiesTop)
+
+local propertiesSearch = new("TextBox", {
+	Size = UDim2.new(1, -10, 0, 24),
+	Position = UDim2.new(0, 5, 0, 32),
+	BackgroundColor3 = THEME.PanelAlt,
+	ClearTextOnFocus = false,
+	PlaceholderText = "search",
+	Text = "",
+	Font = Enum.Font.Gotham,
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	Parent = propertiesWindow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = propertiesSearch })
+
+local propertiesList = new("ScrollingFrame", {
+	Name = "PropertiesList",
+	Size = UDim2.new(1, 0, 1, -62),
+	Position = UDim2.new(0, 0, 0, 60),
+	BackgroundTransparency = 1,
+	ScrollBarThickness = 5,
+	ScrollBarImageColor3 = THEME.Divider,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	Parent = propertiesWindow,
+})
+
+new("UIListLayout", {
+	Padding = UDim.new(0, 4),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = propertiesList,
+})
+
+new("UIPadding", {
+	PaddingTop = UDim.new(0, 4),
+	PaddingLeft = UDim.new(0, 6),
+	PaddingRight = UDim.new(0, 6),
+	Parent = propertiesList,
+})
+
+propertiesSearch:GetPropertyChangedSignal("Text"):Connect(function()
+	refreshProperties()
+end)
+
+-------------------------------------------------
+-- ADD ELEMENT POPUP
+-------------------------------------------------
+local addElementPopup = new("Frame", {
+	Name = "AddElementPopup",
+	Size = UDim2.new(0, 210, 0, 200),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 20,
+	Parent = screenGui,
+})
+
+local addElementTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 26),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 20,
+	Parent = addElementPopup,
+})
+
+new("TextLabel", {
+	Size = UDim2.new(1, -30, 1, 0),
+	Position = UDim2.new(0, 8, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "add",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 20,
+	Parent = addElementTop,
+})
+
+local addElementCloseButton = new("ImageButton", {
+	Size = UDim2.new(0, 20, 0, 20),
+	Position = UDim2.new(1, -24, 0, 3),
+	BackgroundTransparency = 1,
+	Image = ICONS.Close,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 21,
+	Parent = addElementTop,
+})
+addElementCloseButton.MouseButton1Click:Connect(function()
+	addElementPopup.Visible = false
+end)
+
+local addElementScroll = new("ScrollingFrame", {
+	Size = UDim2.new(1, -8, 1, -32),
+	Position = UDim2.new(0, 4, 0, 30),
+	BackgroundTransparency = 1,
+	ScrollBarThickness = 4,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ZIndex = 20,
+	Parent = addElementPopup,
+})
+
+new("UIListLayout", {
+	Padding = UDim.new(0, 3),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = addElementScroll,
+})
+
+for i, className in ipairs(ADD_ELEMENT_CLASSES) do
+	local btn = new("TextButton", {
+		Size = UDim2.new(1, 0, 0, 24),
+		BackgroundColor3 = THEME.Button,
+		AutoButtonColor = false,
+		Font = Enum.Font.Gotham,
+		Text = CLASS_LABELS_PT[className] or className,
+		TextColor3 = THEME.Text,
+		TextSize = 12,
+		LayoutOrder = i,
+		ZIndex = 20,
+		Parent = addElementScroll,
+	})
+	btn.MouseEnter:Connect(function() btn.BackgroundColor3 = THEME.ButtonHover end)
+	btn.MouseLeave:Connect(function() btn.BackgroundColor3 = THEME.Button end)
+	btn.MouseButton1Click:Connect(function()
+		addElement(className, addTargetInstance)
+		addElementPopup.Visible = false
+	end)
+end
+
+local function repositionAddElementPopup()
+	-- Follows the Explorer window
+		local viewport = Workspace.CurrentCamera and Workspace.CurrentCamera.ViewportSize or Vector2.new(1280, 720)
+	local popupWidth = addElementPopup.Size.X.Offset
+	local popupHeight = addElementPopup.Size.Y.Offset
+	local x = explorerWindow.AbsolutePosition.X + explorerWindow.AbsoluteSize.X + 6
+	if x + popupWidth > viewport.X then
+		x = explorerWindow.AbsolutePosition.X - popupWidth - 6
+	end
+	local y = math.clamp(explorerWindow.AbsolutePosition.Y, 0, math.max(viewport.Y - popupHeight, 0))
+	addElementPopup.Position = UDim2.new(0, x, 0, y)
+end
+
+explorerWindow:GetPropertyChangedSignal("Position"):Connect(function()
+	if addElementPopup.Visible then
+		repositionAddElementPopup()
+	end
+end)
+
+function openAddElementPopup(targetInstance, rowGuiObject)
+	addTargetInstance = targetInstance
+	repositionAddElementPopup()
+	addElementPopup.Visible = true
+end
+
+-------------------------------------------------
+-- SETTINGS
+-------------------------------------------------
+local settingsWindow = new("Frame", {
+	Name = "SettingsWindow",
+	Size = UDim2.new(0, 280, 0, 260),
+	Position = UDim2.new(0.5, -130, 0.5, -80),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 15,
+	Active = true,
+	Parent = screenGui,
+})
+
+local settingsTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 15,
+	Parent = settingsWindow,
+})
+
+new("TextLabel", {
+	Size = UDim2.new(1, -36, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "settings",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 15,
+	Parent = settingsTop,
+})
+
+local settingsCloseButton = new("ImageButton", {
+	Size = UDim2.new(0, 22, 0, 22),
+	Position = UDim2.new(1, -26, 0, 3),
+	BackgroundTransparency = 1,
+	Image = ICONS.Close,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 16,
+	Parent = settingsTop,
+})
+settingsCloseButton.MouseButton1Click:Connect(function()
+	settingsWindow.Visible = false
+end)
+
+makeDraggable(settingsWindow, settingsTop)
+
+local settingsContent = new("Frame", {
+	Size = UDim2.new(1, -20, 1, -40),
+	Position = UDim2.new(0, 10, 0, 36),
+	BackgroundTransparency = 1,
+	ZIndex = 15,
+	Parent = settingsWindow,
+})
+
+new("UIListLayout", {
+	Padding = UDim.new(0, 8),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = settingsContent,
+})
+
+local function createThemeToggle(order, label, themeName)
+	local row = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 36),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		ZIndex = 15,
+		Parent = settingsContent,
+	})
+
+	new("TextLabel", {
+		Size = UDim2.new(0.65, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = label,
+		TextColor3 = THEME.Text,
+		TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 15,
+		Parent = row,
+	})
+
+	local track = new("Frame", {
+		Size = UDim2.new(0, 48, 0, 24),
+		Position = UDim2.new(1, -48, 0.5, -12),
+		BackgroundColor3 = (currentThemeName == themeName) and THEME.Accent or THEME.Button,
+		ZIndex = 15,
+		Parent = row,
+	})
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
+
+	local knob = new("Frame", {
+		Size = UDim2.new(0, 20, 0, 20),
+		Position = (currentThemeName == themeName) and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		ZIndex = 16,
+		Parent = track,
+	})
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
+
+	local clickArea = new("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 17,
+		Parent = track,
+	})
+
+	clickArea.MouseButton1Click:Connect(function()
+		applyTheme(themeName)
+	end)
+
+	return { track = track, knob = knob, themeName = themeName }
+end
+
+local themeToggleBlack = createThemeToggle(1, "Black (escuro)", "Black")
+
+local themeToggleWhite = createThemeToggle(2, "White (claro)", "White")
+
+-- Alignment guides toggle (default ON)
+local alignRow = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 36),
+	BackgroundTransparency = 1,
+	LayoutOrder = 3,
+	ZIndex = 15,
+	Parent = settingsContent,
+})
+new("TextLabel", {
+	Size = UDim2.new(0.65, 0, 1, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "Alignment guides",
+	TextColor3 = THEME.Text,
+	TextSize = 14,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 15,
+	Parent = alignRow,
+})
+local alignTrack = new("Frame", {
+	Size = UDim2.new(0, 48, 0, 24),
+	Position = UDim2.new(1, -48, 0.5, -12),
+	BackgroundColor3 = THEME.Accent,
+	ZIndex = 15,
+	Parent = alignRow,
+})
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = alignTrack })
+local alignKnob = new("Frame", {
+	Size = UDim2.new(0, 20, 0, 20),
+	Position = UDim2.new(1, -22, 0.5, -10),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	ZIndex = 16,
+	Parent = alignTrack,
+})
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = alignKnob })
+local alignClick = new("TextButton", {
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundTransparency = 1,
+	Text = "",
+	ZIndex = 17,
+	Parent = alignTrack,
+})
+alignClick.MouseButton1Click:Connect(function()
+	alignmentEnabled = not alignmentEnabled
+	alignTrack.BackgroundColor3 = alignmentEnabled and THEME.Accent or THEME.Button
+	alignKnob.Position = alignmentEnabled and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+	if not alignmentEnabled then clearAlignmentLines() end
+end)
+
+-- Mod GUI Game toggle
+local modGuiRow = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 36),
+	BackgroundTransparency = 1,
+	LayoutOrder = 4,
+	ZIndex = 15,
+	Parent = settingsContent,
+})
+new("TextLabel", {
+	Size = UDim2.new(0.65, 0, 1, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "Mod GUI Game",
+	TextColor3 = THEME.Text,
+	TextSize = 14,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 15,
+	Parent = modGuiRow,
+})
+local modGuiTrack = new("Frame", {
+	Size = UDim2.new(0, 48, 0, 24),
+	Position = UDim2.new(1, -48, 0.5, -12),
+	BackgroundColor3 = THEME.Button,
+	ZIndex = 15,
+	Parent = modGuiRow,
+})
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = modGuiTrack })
+local modGuiKnob = new("Frame", {
+	Size = UDim2.new(0, 20, 0, 20),
+	Position = UDim2.new(0, 2, 0.5, -10),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	ZIndex = 16,
+	Parent = modGuiTrack,
+})
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = modGuiKnob })
+local modGuiClick = new("TextButton", {
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundTransparency = 1,
+	Text = "",
+	ZIndex = 17,
+	Parent = modGuiTrack,
+})
+local modGuiEnabled = false
+
+
+-------------------------------------------------
+-- SAVE / LOAD
+-------------------------------------------------
+local saveLoadWindow, saveLoadTop -- usados também em applyTheme() e no OPTIONS MENU
+local loadAutosaveIfExists -- chamado no INIT, lá no fim do arquivo
+do
+local SAVES_ROOT_NAME = "__GuiBuilderSaves"
+-- Pasta global no filesystem do executor (persiste entre jogos/places)
+local DISK_SAVE_FOLDER = "GuiBuilderTool_Saves"
+local canUseDisk = (typeof(writefile) == "function" and typeof(readfile) == "function"
+	and typeof(isfile) == "function" and typeof(loadstring) == "function")
+
+-- DataStore via servidor (persiste em qualquer jogo do mesmo lugar/experiência)
+local saveRemote = nil
+pcall(function()
+	local rs = game:GetService("ReplicatedStorage")
+	saveRemote = rs:FindFirstChild("GuiBuilderToolSaveRF")
+end)
+
+local function ensureDiskFolder()
+	if canUseDisk and makefolder and isfolder then
+		local ok, exists = pcall(isfolder, DISK_SAVE_FOLDER)
+		if ok and not exists then
+			pcall(makefolder, DISK_SAVE_FOLDER)
+		end
+	end
+end
+
+local function diskSavePath(username, saveName)
+	local safeUser = username:gsub("[^%w_%-]", "_")
+	local safeName = saveName:gsub("[^%w_%-]", "_")
+	return DISK_SAVE_FOLDER .. "/" .. safeUser .. "__" .. safeName .. ".txt"
+end
+
+-- Serialize instances to Lua source (like Gui2Lua)
+local function serializeTreeToLua(instances)
+	local lines = {}
+	local varCount = 0
+	local function nextVar(name)
+		varCount = varCount + 1
+		local safe = name:gsub("[^%w_]", "")
+		if safe == "" then safe = "Obj" end
+		return safe .. varCount
+	end
+	table.insert(lines, "local __Root = Instance.new(\"Folder\")")
+	local function exportInstance(inst, parentVar)
+		if isOverlay(inst) then return end
+		local className = inst.ClassName
+		local props = EXPORTABLE_PROPS[className]
+		local varName = nextVar(inst.Name)
+		table.insert(lines, string.format("local %s = Instance.new(%q)", varName, className))
+		if props then
+			for _, propName in ipairs(props) do
+				local ok, value = pcall(function() return inst[propName] end)
+				if ok and value ~= nil then
+					table.insert(lines, string.format("%s.%s = %s", varName, propName, luaValue(value)))
+				end
+			end
+		else
+			table.insert(lines, string.format("%s.Name = %q", varName, inst.Name))
+		end
+		table.insert(lines, string.format("%s.Parent = %s", varName, parentVar))
+		for _, child in ipairs(inst:GetChildren()) do
+			exportInstance(child, varName)
+		end
+	end
+	for _, inst in ipairs(instances) do
+		exportInstance(inst, "__Root")
+	end
+	table.insert(lines, "return __Root")
+	return table.concat(lines, "\n")
+end
+
+local function getSavesRoot()
+	local root = PlayerGui:FindFirstChild(SAVES_ROOT_NAME)
+	if not root then
+		root = Instance.new("Folder")
+		root.Name = SAVES_ROOT_NAME
+		root.Parent = PlayerGui
+	end
+	return root
+end
+
+local function getUserSavesFolder()
+	local root = getSavesRoot()
+	local uname = LocalPlayer.Name
+	local folder = root:FindFirstChild(uname)
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = uname
+		folder.Parent = root
+	end
+	return folder
+end
+
+-- List saves: disk first, then session
+local function listUserSaves()
+	local names = {}
+	local seen = {}
+
+	local function addName(saveName)
+		if saveName and saveName ~= "" and not seen[saveName] and not saveName:match("^__") then
+			seen[saveName] = true
+			table.insert(names, saveName)
+		end
+	end
+
+	if canUseDisk and typeof(listfiles) == "function" then
+		ensureDiskFolder()
+		local ok, files = pcall(listfiles, DISK_SAVE_FOLDER)
+		if ok and files then
+			local prefix = LocalPlayer.Name:gsub("[^%w_%-]", "_") .. "__"
+			for _, filePath in ipairs(files) do
+				local fileName = tostring(filePath):match("([^/\\]+)$") or tostring(filePath)
+				if fileName:sub(1, #prefix) == prefix then
+					addName(fileName:sub(#prefix + 1):gsub("%.txt$", ""))
+				end
+			end
+		end
+	end
+
+	if saveRemote then
+		local ok, remoteNames = pcall(function()
+			return saveRemote:InvokeServer("List")
+		end)
+		if ok and type(remoteNames) == "table" then
+			for _, n in ipairs(remoteNames) do
+				addName(n)
+			end
+		end
+	end
+
+	local folder = getUserSavesFolder()
+	for _, child in ipairs(folder:GetChildren()) do
+		if child:IsA("Folder") then
+			addName(child.Name)
+		end
+	end
+
+	table.sort(names)
+	return names
+end
+
+local function captureProjectSnapshot()
+	local clones = {}
+	if not projectGui then return clones end
+	for _, child in ipairs(projectGui:GetChildren()) do
+		if not isOverlay(child) then
+			table.insert(clones, child:Clone())
+		end
+	end
+	return clones
+end
+
+local function writeSave(saveName, clones)
+	-- session copy (fast)
+	local folder = getUserSavesFolder()
+	local existing = folder:FindFirstChild(saveName)
+	if existing then existing:Destroy() end
+	local saveFolder = Instance.new("Folder")
+	saveFolder.Name = saveName
+	saveFolder.Parent = folder
+	for _, c in ipairs(clones) do
+		c.Parent = saveFolder
+	end
+
+	-- Persistência real: disco (executor) + DataStore (servidor)
+	local okSrc, srcCode = pcall(serializeTreeToLua, clones)
+	if okSrc and srcCode then
+		if canUseDisk then
+			ensureDiskFolder()
+			pcall(writefile, diskSavePath(LocalPlayer.Name, saveName), srcCode)
+		end
+		if saveRemote then
+			task.spawn(function()
+				pcall(function()
+					saveRemote:InvokeServer("Save", saveName, srcCode)
+				end)
+			end)
+		end
+	end
+
+	return saveFolder
+end
+
+local function loadSave(saveName)
+	local folder = getUserSavesFolder()
+	local saveFolder = folder:FindFirstChild(saveName)
+	local sourceInstances = nil
+	local tempRoot = nil
+
+	if saveFolder then
+		sourceInstances = saveFolder:GetChildren()
+	else
+		local srcCode = nil
+		if canUseDisk then
+			local path = diskSavePath(LocalPlayer.Name, saveName)
+			local ok, exists = pcall(isfile, path)
+			if ok and exists then
+				local ok2, content = pcall(readfile, path)
+				if ok2 then srcCode = content end
+			end
+		end
+		if (not srcCode or srcCode == "") and saveRemote then
+			local okR, content = pcall(function()
+				return saveRemote:InvokeServer("Load", saveName)
+			end)
+			if okR and type(content) == "string" and content ~= "" then
+				srcCode = content
+			end
+		end
+		if srcCode and srcCode ~= "" then
+			local chunk = loadstring(srcCode)
+			if chunk then
+				local ok3, root = pcall(chunk)
+				if ok3 and root then
+					tempRoot = root
+					sourceInstances = root:GetChildren()
+				end
+			end
+		end
+	end
+
+	if not sourceInstances then return false end
+
+	selected = nil
+	destroyBoundingBox()
+	clearAlignmentLines()
+	for _, child in ipairs(projectGui:GetChildren()) do
+		if not isOverlay(child) then
+			child:Destroy()
+		end
+	end
+	for _, inst in ipairs(sourceInstances) do
+		inst:Clone().Parent = projectGui
+	end
+	if tempRoot then
+		tempRoot:Destroy()
+	end
+	refreshExplorer()
+	selectInstance(projectGui)
+	return true
+end
+
+local function deleteSave(saveName)
+	local removedSomething = false
+	local folder = getUserSavesFolder()
+	local saveFolder = folder:FindFirstChild(saveName)
+	if saveFolder then
+		saveFolder:Destroy()
+		removedSomething = true
+	end
+	if canUseDisk then
+		local path = diskSavePath(LocalPlayer.Name, saveName)
+		local ok, exists = pcall(isfile, path)
+		if ok and exists and typeof(delfile) == "function" then
+			pcall(delfile, path)
+			removedSomething = true
+		end
+	end
+	if saveRemote then
+		local ok = pcall(function()
+			return saveRemote:InvokeServer("Delete", saveName)
+		end)
+		if ok then removedSomething = true end
+	end
+	return removedSomething
+end
+
+-- AUTOSAVE: keeps the active project (not the named saves list) on disk,
+-- so it's still there after leaving/rejoining the game.
+local function autosavePath()
+	local safeUser = LocalPlayer.Name:gsub("[^%w_%-]", "_")
+	return DISK_SAVE_FOLDER .. "/__autosave_" .. safeUser .. ".txt"
+end
+
+local function doAutosave()
+	if not canUseDisk then return end
+	ensureDiskFolder()
+	local clones = captureProjectSnapshot()
+	local ok, src = pcall(serializeTreeToLua, clones)
+	for _, c in ipairs(clones) do
+		c:Destroy()
+	end
+	if ok then
+		pcall(writefile, autosavePath(), src)
+	end
+end
+
+function loadAutosaveIfExists()
+	if not canUseDisk then return false end
+	local path = autosavePath()
+	local ok, exists = pcall(isfile, path)
+	if not (ok and exists) then return false end
+	local ok2, src = pcall(readfile, path)
+	if not (ok2 and src) or src == "" then return false end
+	local chunk = loadstring(src)
+	if not chunk then return false end
+	local ok3, root = pcall(chunk)
+	if not (ok3 and root) then return false end
+	for _, child in ipairs(projectGui:GetChildren()) do
+		if not isOverlay(child) then
+			child:Destroy()
+		end
+	end
+	for _, inst in ipairs(root:GetChildren()) do
+		inst:Clone().Parent = projectGui
+	end
+	root:Destroy()
+	return true
+end
+
+-- Autosaves every few seconds while the tool is open (simpler and safer
+-- than trying to hook every single edit path).
+task.spawn(function()
+	while true do
+		task.wait(6)
+		pcall(doAutosave)
+	end
+end)
+
+saveLoadWindow = new("Frame", {
+	Name = "SaveLoadWindow",
+	Size = UDim2.new(0, 320, 0, 380),
+	Position = UDim2.new(0.5, -160, 0.5, -190),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 15,
+	Active = true,
+	Parent = screenGui,
+})
+
+saveLoadTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 15,
+	Parent = saveLoadWindow,
+})
+
+new("TextLabel", {
+	Size = UDim2.new(1, -36, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "save / load",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 15,
+	Parent = saveLoadTop,
+})
+
+local saveLoadCloseButton = new("ImageButton", {
+	Size = UDim2.new(0, 22, 0, 22),
+	Position = UDim2.new(1, -26, 0, 3),
+	BackgroundTransparency = 1,
+	Image = ICONS.Close,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 16,
+	Parent = saveLoadTop,
+})
+saveLoadCloseButton.MouseButton1Click:Connect(function()
+	saveLoadWindow.Visible = false
+end)
+
+makeDraggable(saveLoadWindow, saveLoadTop)
+
+-- search bar + new save button
+local searchRow = new("Frame", {
+	Size = UDim2.new(1, -16, 0, 32),
+	Position = UDim2.new(0, 8, 0, 34),
+	BackgroundTransparency = 1,
+	ZIndex = 15,
+	Parent = saveLoadWindow,
+})
+
+local newSaveBtn = new("ImageButton", {
+	Size = UDim2.new(0, 28, 0, 28),
+	Position = UDim2.new(0, 0, 0.5, -14),
+	BackgroundColor3 = Color3.fromRGB(0, 170, 200),
+	Image = ICONS.SaveNew,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 16,
+	Parent = searchRow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = newSaveBtn })
+new("UIPadding", {
+	PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+	PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4),
+	Parent = newSaveBtn,
+})
+
+local searchBox = new("TextBox", {
+	Size = UDim2.new(1, -36, 0, 28),
+	Position = UDim2.new(0, 36, 0.5, -14),
+	BackgroundColor3 = THEME.PanelAlt,
+	ClearTextOnFocus = false,
+	Font = Enum.Font.Gotham,
+	PlaceholderText = "Search",
+	Text = "",
+	TextColor3 = THEME.Text,
+	PlaceholderColor3 = THEME.SubText,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 15,
+	Parent = searchRow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = searchBox })
+new("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = searchBox })
+
+-- scrollable list
+local savesScroll = new("ScrollingFrame", {
+	Size = UDim2.new(1, -16, 1, -78),
+	Position = UDim2.new(0, 8, 0, 72),
+	BackgroundColor3 = THEME.PanelAlt,
+	BorderSizePixel = 0,
+	ScrollBarThickness = 5,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ZIndex = 15,
+	Parent = saveLoadWindow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = savesScroll })
+new("UIListLayout", {
+	Padding = UDim.new(0, 4),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = savesScroll,
+})
+new("UIPadding", {
+	PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+	PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4),
+	Parent = savesScroll,
+})
+
+local saveLoadStatus = new("TextLabel", {
+	Size = UDim2.new(1, -16, 0, 18),
+	Position = UDim2.new(0, 8, 1, -22),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "",
+	TextColor3 = THEME.SubText,
+	TextSize = 11,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 15,
+	Parent = saveLoadWindow,
+})
+
+-- "Save GUI" popup
+local saveNamePopup = new("Frame", {
+	Name = "SaveNamePopup",
+	Size = UDim2.new(0, 260, 0, 130),
+	Position = UDim2.new(0.5, -130, 0.5, -65),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 40,
+	Parent = screenGui,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = saveNamePopup })
+new("UIStroke", { Color = THEME.Divider, Thickness = 1, Parent = saveNamePopup })
+
+local saveNameTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 40,
+	Parent = saveNamePopup,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 8), Parent = saveNameTop })
+new("TextLabel", {
+	Size = UDim2.new(1, -30, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Save GUI",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 41,
+	Parent = saveNameTop,
+})
+local saveNameClose = new("ImageButton", {
+	Size = UDim2.new(0, 20, 0, 20),
+	Position = UDim2.new(1, -24, 0, 4),
+	BackgroundTransparency = 1,
+	Image = ICONS.Close,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 41,
+	Parent = saveNameTop,
+})
+saveNameClose.MouseButton1Click:Connect(function()
+	saveNamePopup.Visible = false
+end)
+
+local saveNameBox = new("TextBox", {
+	Size = UDim2.new(1, -20, 0, 30),
+	Position = UDim2.new(0, 10, 0, 40),
+	BackgroundColor3 = THEME.PanelAlt,
+	ClearTextOnFocus = false,
+	Font = Enum.Font.Gotham,
+	PlaceholderText = "Save name",
+	Text = "",
+	TextColor3 = THEME.Text,
+	PlaceholderColor3 = THEME.SubText,
+	TextSize = 13,
+	ZIndex = 40,
+	Parent = saveNamePopup,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = saveNameBox })
+new("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = saveNameBox })
+
+local confirmSaveBtn = new("TextButton", {
+	Size = UDim2.new(1, -20, 0, 32),
+	Position = UDim2.new(0, 10, 1, -42),
+	BackgroundColor3 = Color3.fromRGB(40, 170, 80),
+	Font = Enum.Font.GothamBold,
+	Text = "Save",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 14,
+	ZIndex = 40,
+	Parent = saveNamePopup,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = confirmSaveBtn })
+
+local refreshSavesList
+
+confirmSaveBtn.MouseButton1Click:Connect(function()
+	local name = saveNameBox.Text:gsub("^%s+", ""):gsub("%s+$", "")
+	if name == "" then
+		saveLoadStatus.Text = "Enter a name"
+		return
+	end
+	-- Instance names can't have some characters
+	name = name:gsub("[^%w%_%- ]", "")
+	if name == "" then
+		saveLoadStatus.Text = "Invalid name"
+		return
+	end
+	local clones = captureProjectSnapshot()
+	writeSave(name, clones)
+	saveNamePopup.Visible = false
+	saveNameBox.Text = ""
+	saveLoadStatus.Text = "Saved: " .. name .. " (" .. LocalPlayer.Name .. ")"
+	if refreshSavesList then refreshSavesList() end
+end)
+
+newSaveBtn.MouseButton1Click:Connect(function()
+	saveNameBox.Text = ""
+	saveNamePopup.Visible = true
+end)
+
+local function makeSaveActionBtn(parent, imageId, color, x)
+	local btn = new("ImageButton", {
+		Size = UDim2.new(0, 26, 0, 26),
+		Position = UDim2.new(1, x, 0.5, -13),
+		BackgroundColor3 = color,
+		Image = imageId,
+		ScaleType = Enum.ScaleType.Fit,
+		ZIndex = 17,
+		Parent = parent,
+	})
+	new("UICorner", { CornerRadius = UDim.new(0, 5), Parent = btn })
+	new("UIPadding", {
+		PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+		PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4),
+		Parent = btn,
+	})
+	return btn
+end
+
+refreshSavesList = function()
+	for _, child in ipairs(savesScroll:GetChildren()) do
+		if child:IsA("Frame") then child:Destroy() end
+	end
+	local filter = (searchBox.Text or ""):lower()
+	local names = listUserSaves()
+	local order = 0
+	for _, saveName in ipairs(names) do
+		if filter == "" or saveName:lower():find(filter, 1, true) then
+			order = order + 1
+			local row = new("Frame", {
+				Size = UDim2.new(1, -8, 0, 34),
+				BackgroundColor3 = THEME.Panel,
+				LayoutOrder = order,
+				ZIndex = 16,
+				Parent = savesScroll,
+			})
+			new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = row })
+			new("TextLabel", {
+				Size = UDim2.new(1, -120, 1, 0),
+				Position = UDim2.new(0, 8, 0, 0),
+				BackgroundTransparency = 1,
+				Font = Enum.Font.Gotham,
+				Text = saveName,
+				TextColor3 = THEME.Text,
+				TextSize = 13,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextTruncate = Enum.TextTruncate.AtEnd,
+				ZIndex = 16,
+				Parent = row,
+			})
+			-- Edit (orange)
+			local editBtn = makeSaveActionBtn(row, ICONS.EditSave, Color3.fromRGB(200, 180, 40), -116)
+			editBtn.MouseButton1Click:Connect(function()
+				if loadSave(saveName) then
+					saveLoadStatus.Text = "Editing: " .. saveName
+					saveLoadWindow.Visible = false
+				end
+			end)
+			-- Load (green)
+			local loadBtn = makeSaveActionBtn(row, ICONS.LoadSave, Color3.fromRGB(50, 180, 70), -86)
+			loadBtn.MouseButton1Click:Connect(function()
+				if loadSave(saveName) then
+					saveLoadStatus.Text = "Loaded: " .. saveName
+				end
+			end)
+			-- Update (blue)
+			local updBtn = makeSaveActionBtn(row, ICONS.UpdateSave, Color3.fromRGB(0, 170, 200), -56)
+			updBtn.MouseButton1Click:Connect(function()
+				local clones = captureProjectSnapshot()
+				writeSave(saveName, clones)
+				saveLoadStatus.Text = "Updated: " .. saveName
+				refreshSavesList()
+			end)
+			-- Delete (red)
+			local delBtn = makeSaveActionBtn(row, ICONS.DeleteSave, Color3.fromRGB(200, 50, 50), -26)
+			delBtn.MouseButton1Click:Connect(function()
+				if deleteSave(saveName) then
+					saveLoadStatus.Text = "Deleted: " .. saveName
+					refreshSavesList()
+				end
+			end)
+		end
+	end
+	if order == 0 then
+		saveLoadStatus.Text = "No saves for " .. LocalPlayer.Name
+	end
+end
+
+searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+	refreshSavesList()
+end)
+
+-- refresh list on open
+saveLoadWindow:GetPropertyChangedSignal("Visible"):Connect(function()
+	if saveLoadWindow.Visible then
+		refreshSavesList()
+	end
+end)
+end -- do (SAVE / LOAD)
+
+-------------------------------------------------
+-- GUI TO LUA
+-------------------------------------------------
+local gui2luaWindow = new("Frame", {
+	Name = "Gui2LuaWindow",
+	Size = UDim2.new(0, 300, 0, 240),
+	Position = UDim2.new(0.5, -150, 0.5, -120),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 15,
+	Active = true,
+	Parent = screenGui,
+})
+
+local gui2luaTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 30),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 15,
+	Parent = gui2luaWindow,
+})
+
+new("TextLabel", {
+	Size = UDim2.new(1, -40, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Gui2Lua",
+	TextColor3 = THEME.Text,
+	TextSize = 14,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 15,
+	Parent = gui2luaTop,
+})
+
+local gui2luaCloseButton = new("ImageButton", {
+	Size = UDim2.new(0, 24, 0, 24),
+	Position = UDim2.new(1, -28, 0, 3),
+	BackgroundTransparency = 1,
+	Image = ICONS.Close,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 16,
+	Parent = gui2luaTop,
+})
+gui2luaCloseButton.MouseButton1Click:Connect(function()
+	gui2luaWindow.Visible = false
+end)
+
+makeDraggable(gui2luaWindow, gui2luaTop)
+
+local gui2luaToggleHolder = new("Frame", {
+	Size = UDim2.new(1, -20, 0, 150),
+	Position = UDim2.new(0, 10, 0, 38),
+	BackgroundTransparency = 1,
+	ZIndex = 15,
+	Parent = gui2luaWindow,
+})
+
+new("UIListLayout", {
+	Padding = UDim.new(0, 4),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = gui2luaToggleHolder,
+})
+
+local function createToggle(order, label, default)
+	local row = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 32),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+		ZIndex = 15,
+		Parent = gui2luaToggleHolder,
+	})
+
+	new("TextLabel", {
+		Size = UDim2.new(0.7, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = label,
+		TextColor3 = THEME.Text,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 15,
+		Parent = row,
+	})
+
+	local track = new("Frame", {
+		Size = UDim2.new(0, 44, 0, 22),
+		Position = UDim2.new(1, -44, 0.5, -11),
+		BackgroundColor3 = default and THEME.Accent or THEME.Button,
+		ZIndex = 15,
+		Parent = row,
+	})
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = track })
+
+	local knob = new("Frame", {
+		Size = UDim2.new(0, 18, 0, 18),
+		Position = default and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9),
+		BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+		ZIndex = 16,
+		Parent = track,
+	})
+	new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = knob })
+
+	local clickArea = new("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Text = "",
+		ZIndex = 17,
+		Parent = track,
+	})
+
+	local state = default
+	clickArea.MouseButton1Click:Connect(function()
+		state = not state
+		track.BackgroundColor3 = state and THEME.Accent or THEME.Button
+		knob.Position = state and UDim2.new(1, -20, 0.5, -9) or UDim2.new(0, 2, 0.5, -9)
+	end)
+
+	return { Get = function() return state end }
+end
+
+local toggleSizeScale = createToggle(1, "auto size scale", true)
+local togglePositionScale = createToggle(2, "auto position scale", true)
+local toggleConstraint = createToggle(3, "auto add constraint", true)
+local toggleComments = createToggle(4, "comments", false)
+
+local convertButton = new("TextButton", {
+	Size = UDim2.new(1, -20, 0, 34),
+	Position = UDim2.new(0, 10, 1, -44),
+	BackgroundColor3 = THEME.Button,
+	AutoButtonColor = false,
+	Font = Enum.Font.GothamBold,
+	Text = "Gui2Lua",
+	TextColor3 = THEME.Text,
+	TextSize = 14,
+	ZIndex = 15,
+	Parent = gui2luaWindow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = convertButton })
+convertButton.MouseEnter:Connect(function() convertButton.BackgroundColor3 = THEME.ButtonHover end)
+convertButton.MouseLeave:Connect(function() convertButton.BackgroundColor3 = THEME.Button end)
+
+-------------------------------------------------
+-- EXPORTED CODE
+-------------------------------------------------
+local codeOutputWindow = new("Frame", {
+	Name = "CodeOutputWindow",
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Size = UDim2.new(0.85, 0, 0.88, 0),
+	Position = UDim2.new(0.5, 0, 0.5, 0),
+	BackgroundColor3 = THEME.Panel,
+	Visible = false,
+	ZIndex = 18,
+	Active = true,
+	Parent = screenGui,
+})
+
+local codeOutputTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 30),
+	BackgroundColor3 = THEME.PanelAlt,
+	ZIndex = 18,
+	Parent = codeOutputWindow,
+})
+
+new("TextLabel", {
+	Size = UDim2.new(1, -120, 1, 0),
+	Position = UDim2.new(0, 12, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Gui2Lua - Code",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 18,
+	Parent = codeOutputTop,
+})
+
+local copyCodeBtn = new("TextButton", {
+	Size = UDim2.new(0, 70, 0, 22),
+	Position = UDim2.new(1, -105, 0, 4),
+	BackgroundColor3 = THEME.Accent,
+	Font = Enum.Font.GothamBold,
+	Text = "Copy",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 12,
+	ZIndex = 19,
+	Parent = codeOutputTop,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = copyCodeBtn })
+
+local codeOutputCloseButton = new("ImageButton", {
+	Size = UDim2.new(0, 22, 0, 22),
+	Position = UDim2.new(1, -28, 0, 4),
+	BackgroundTransparency = 1,
+	Image = ICONS.Close,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 19,
+	Parent = codeOutputTop,
+})
+codeOutputCloseButton.MouseButton1Click:Connect(function()
+	codeOutputWindow.Visible = false
+end)
+
+makeDraggable(codeOutputWindow, codeOutputTop)
+
+local codeOutputScroll = new("ScrollingFrame", {
+	Size = UDim2.new(1, -12, 1, -42),
+	Position = UDim2.new(0, 6, 0, 36),
+	BackgroundColor3 = THEME.Background,
+	ScrollBarThickness = 6,
+	CanvasSize = UDim2.new(0, 0, 0, 0),
+	AutomaticCanvasSize = Enum.AutomaticSize.Y,
+	ZIndex = 18,
+	Parent = codeOutputWindow,
+})
+
+-- Pagination (mobile only, big code)
+local codeScrollNormalPos = UDim2.new(0, 6, 0, 36)
+local codeScrollNormalSize = UDim2.new(1, -12, 1, -42)
+local codeScrollPagedPos = UDim2.new(0, 6, 0, 66)
+local codeScrollPagedSize = UDim2.new(1, -12, 1, -72)
+
+local codePaginationRow = new("Frame", {
+	Size = UDim2.new(1, -12, 0, 26),
+	Position = UDim2.new(0, 6, 0, 36),
+	BackgroundTransparency = 1,
+	Visible = false,
+	ZIndex = 18,
+	Parent = codeOutputWindow,
+})
+
+local codePrevBtn = new("TextButton", {
+	Size = UDim2.new(0, 66, 1, 0),
+	BackgroundColor3 = THEME.Button,
+	Font = Enum.Font.Gotham,
+	Text = "< Previous",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	ZIndex = 18,
+	Parent = codePaginationRow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = codePrevBtn })
+
+local codeNextBtn = new("TextButton", {
+	Size = UDim2.new(0, 66, 1, 0),
+	Position = UDim2.new(0, 70, 0, 0),
+	BackgroundColor3 = THEME.Button,
+	Font = Enum.Font.Gotham,
+	Text = "Next >",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	ZIndex = 18,
+	Parent = codePaginationRow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = codeNextBtn })
+
+local codePageLabel = new("TextLabel", {
+	Size = UDim2.new(1, -280, 1, 0),
+	Position = UDim2.new(0, 144, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "Part 1/1",
+	TextColor3 = THEME.SubText,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Center,
+	ZIndex = 18,
+	Parent = codePaginationRow,
+})
+
+local codeCopyChunkBtn = new("TextButton", {
+	Size = UDim2.new(0, 150, 1, 0),
+	Position = UDim2.new(1, -150, 0, 0),
+	BackgroundColor3 = THEME.Accent,
+	Font = Enum.Font.GothamBold,
+	Text = "Copy this part",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 12,
+	ZIndex = 18,
+	Parent = codePaginationRow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = codeCopyChunkBtn })
+
+local codeOutputBox = new("TextBox", {
+	Size = UDim2.new(1, -10, 0, 0),
+	Position = UDim2.new(0, 5, 0, 5),
+	AutomaticSize = Enum.AutomaticSize.Y,
+	BackgroundTransparency = 1,
+	ClearTextOnFocus = false, -- NÃO some o texto ao clicar
+	MultiLine = true,
+	TextEditable = true,
+	Font = Enum.Font.Code,
+	Text = "",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextYAlignment = Enum.TextYAlignment.Top,
+	TextWrapped = true,
+	ZIndex = 18,
+	Parent = codeOutputScroll,
+})
+
+-- Mobile clipboard has a size limit, so split code into chunks
+local MOBILE_CODE_CHUNK_LIMIT = 6000
+local codeChunks = {""}
+local codeChunkIndex = 1
+
+local function splitCodeIntoChunks(code, limit)
+	if #code <= limit then
+		return {code}
+	end
+	local chunks = {}
+	local current = {}
+	local currentLen = 0
+	for line in (code .. "\n"):gmatch("([^\n]*)\n") do
+		local lineLen = #line + 1
+		if currentLen + lineLen > limit and #current > 0 then
+			table.insert(chunks, table.concat(current, "\n"))
+			current = {}
+			currentLen = 0
+		end
+		table.insert(current, line)
+		currentLen = currentLen + lineLen
+	end
+	if #current > 0 then
+		table.insert(chunks, table.concat(current, "\n"))
+	end
+	return chunks
+end
+
+local function showCodeChunk()
+	codeOutputBox.Text = codeChunks[codeChunkIndex] or ""
+	codePageLabel.Text = string.format("Parte %d/%d", codeChunkIndex, #codeChunks)
+end
+
+local function updateCodeOutputView()
+	local isMobileNow = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	if isMobileNow and #codeChunks > 1 then
+		codePaginationRow.Visible = true
+		codeOutputScroll.Position = codeScrollPagedPos
+		codeOutputScroll.Size = codeScrollPagedSize
+	else
+		codePaginationRow.Visible = false
+		codeOutputScroll.Position = codeScrollNormalPos
+		codeOutputScroll.Size = codeScrollNormalSize
+	end
+	showCodeChunk()
+end
+
+codePrevBtn.MouseButton1Click:Connect(function()
+	codeChunkIndex = math.max(1, codeChunkIndex - 1)
+	showCodeChunk()
+end)
+
+codeNextBtn.MouseButton1Click:Connect(function()
+	codeChunkIndex = math.min(#codeChunks, codeChunkIndex + 1)
+	showCodeChunk()
+end)
+
+codeCopyChunkBtn.MouseButton1Click:Connect(function()
+	local text = codeChunks[codeChunkIndex] or ""
+	if setclipboard then
+		setclipboard(text)
+		codeCopyChunkBtn.Text = "Copiado!"
+		task.delay(1.2, function() codeCopyChunkBtn.Text = "Copy this part" end)
+	else
+		codeOutputBox:CaptureFocus()
+	end
+end)
+
+copyCodeBtn.MouseButton1Click:Connect(function()
+	if codeOutputBox.Text ~= "" then
+		-- copy to clipboard
+		if setclipboard then
+			setclipboard(codeOutputBox.Text)
+			copyCodeBtn.Text = "Copiado!"
+			task.delay(1.2, function()
+				copyCodeBtn.Text = "Copy"
+			end)
+		else
+			-- fallback: select text
+			codeOutputBox:CaptureFocus()
+			copyCodeBtn.Text = "Select"
+			task.delay(1.2, function()
+				copyCodeBtn.Text = "Copy"
+			end)
+		end
+	end
+end)
+
+-------------------------------------------------
+-- COLOR PICKER
+-------------------------------------------------
+do
+local colorPickerWindow = new("Frame", {
+	Name = "ColorPickerWindow",
+	Size = UDim2.new(0, 220, 0, 312),
+	Position = UDim2.new(0.5, -110, 0.5, -156),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 19,
+	Parent = screenGui,
+})
+
+local colorPickerTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 19,
+	Parent = colorPickerWindow,
+})
+
+new("TextLabel", {
+	Size = UDim2.new(1, -30, 1, 0),
+	Position = UDim2.new(0, 8, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "color picker",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 19,
+	Parent = colorPickerTop,
+})
+
+local colorPickerCloseButton = new("TextButton", {
+	Size = UDim2.new(0, 22, 0, 22),
+	Position = UDim2.new(1, -25, 0, 3),
+	BackgroundColor3 = THEME.Button,
+	Font = Enum.Font.GothamBold,
+	Text = "X",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	ZIndex = 19,
+	Parent = colorPickerTop,
+})
+
+makeDraggable(colorPickerWindow, colorPickerTop)
+
+-- Saturation/Value square
+local svSquare = new("Frame", {
+	Name = "SVSquare",
+	Size = UDim2.new(0, 188, 0, 130),
+	Position = UDim2.new(0, 16, 0, 36),
+	BackgroundColor3 = Color3.fromHSV(0, 1, 1),
+	ZIndex = 19,
+	Parent = colorPickerWindow,
+})
+
+local satOverlay = new("Frame", {
+	Name = "SaturationOverlay",
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	ZIndex = 19,
+	Parent = svSquare,
+})
+new("UIGradient", {
+	Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 0),
+		NumberSequenceKeypoint.new(1, 1),
+	}),
+	Parent = satOverlay,
+})
+
+local valOverlay = new("Frame", {
+	Name = "ValueOverlay",
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+	ZIndex = 19,
+	Parent = svSquare,
+})
+new("UIGradient", {
+	Rotation = 90,
+	Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0, 1),
+		NumberSequenceKeypoint.new(1, 0),
+	}),
+	Parent = valOverlay,
+})
+
+local svPointer = new("Frame", {
+	Name = "Pointer",
+	Size = UDim2.new(0, 10, 0, 10),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	ZIndex = 20,
+	Parent = svSquare,
+})
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = svPointer })
+new("UIStroke", { Color = Color3.fromRGB(20, 20, 20), Thickness = 1.5, Parent = svPointer })
+
+local svButton = new("TextButton", {
+	Name = "SVInput",
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundTransparency = 1,
+	Text = "",
+	ZIndex = 21,
+	Parent = svSquare,
+})
+
+-- Hue bar
+local hueBar = new("Frame", {
+	Name = "HueBar",
+	Size = UDim2.new(0, 188, 0, 16),
+	Position = UDim2.new(0, 16, 0, 176),
+	ZIndex = 19,
+	Parent = colorPickerWindow,
+})
+new("UIGradient", {
+	Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0.000, Color3.fromRGB(255, 0, 0)),
+		ColorSequenceKeypoint.new(0.167, Color3.fromRGB(255, 255, 0)),
+		ColorSequenceKeypoint.new(0.333, Color3.fromRGB(0, 255, 0)),
+		ColorSequenceKeypoint.new(0.500, Color3.fromRGB(0, 255, 255)),
+		ColorSequenceKeypoint.new(0.667, Color3.fromRGB(0, 0, 255)),
+		ColorSequenceKeypoint.new(0.833, Color3.fromRGB(255, 0, 255)),
+		ColorSequenceKeypoint.new(1.000, Color3.fromRGB(255, 0, 0)),
+	}),
+	Parent = hueBar,
+})
+
+local huePointer = new("Frame", {
+	Name = "Pointer",
+	Size = UDim2.new(0, 4, 1, 4),
+	AnchorPoint = Vector2.new(0.5, 0.5),
+	Position = UDim2.new(0, 0, 0.5, 0),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	ZIndex = 20,
+	Parent = hueBar,
+})
+new("UIStroke", { Color = Color3.fromRGB(20, 20, 20), Thickness = 1.5, Parent = huePointer })
+
+local hueButton = new("TextButton", {
+	Name = "HueInput",
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundTransparency = 1,
+	Text = "",
+	ZIndex = 21,
+	Parent = hueBar,
+})
+
+-- Preview + hex
+local previewSwatch = new("Frame", {
+	Size = UDim2.new(0, 34, 0, 26),
+	Position = UDim2.new(0, 16, 0, 204),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	ZIndex = 19,
+	Parent = colorPickerWindow,
+})
+new("UIStroke", { Color = THEME.Divider, Thickness = 1, Parent = previewSwatch })
+
+local hexBox = new("TextBox", {
+	Size = UDim2.new(0, 138, 0, 26),
+	Position = UDim2.new(0, 56, 0, 204),
+	BackgroundColor3 = THEME.PanelAlt,
+	ClearTextOnFocus = false,
+	Font = Enum.Font.Gotham,
+	Text = "FFFFFF",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	ZIndex = 19,
+	Parent = colorPickerWindow,
+})
+
+-- RGB
+local function makeRGBBox(label, xOffset)
+	new("TextLabel", {
+		Size = UDim2.new(0, 16, 0, 20),
+		Position = UDim2.new(0, xOffset, 0, 238),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold,
+		Text = label,
+		TextColor3 = THEME.SubText,
+		TextSize = 12,
+		ZIndex = 19,
+		Parent = colorPickerWindow,
+	})
+	local box = new("TextBox", {
+		Size = UDim2.new(0, 42, 0, 24),
+		Position = UDim2.new(0, xOffset + 18, 0, 236),
+		BackgroundColor3 = THEME.PanelAlt,
+		ClearTextOnFocus = false,
+		Font = Enum.Font.Gotham,
+		Text = "255",
+		TextColor3 = THEME.Text,
+		TextSize = 12,
+		ZIndex = 19,
+		Parent = colorPickerWindow,
+	})
+	return box
+end
+
+local rBox = makeRGBBox("R", 16)
+local gBox = makeRGBBox("G", 92)
+local bBox = makeRGBBox("B", 168)
+
+-- Buttons
+local colorPickerCancelBtn = new("TextButton", {
+	Size = UDim2.new(0, 92, 0, 30),
+	Position = UDim2.new(0, 16, 0, 272),
+	BackgroundColor3 = THEME.Button,
+	Font = Enum.Font.Gotham,
+	Text = "Cancel",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	ZIndex = 19,
+	Parent = colorPickerWindow,
+})
+
+local colorPickerDoneBtn = new("TextButton", {
+	Size = UDim2.new(0, 92, 0, 30),
+	Position = UDim2.new(0, 112, 0, 272),
+	BackgroundColor3 = THEME.Accent,
+	Font = Enum.Font.GothamBold,
+	Text = "Apply",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 13,
+	ZIndex = 19,
+	Parent = colorPickerWindow,
+})
+
+-- color picker state
+local colorPickerCallback = nil
+local colorPickerHue, colorPickerSat, colorPickerVal = 0, 0, 1
+local colorPickerColor = Color3.fromRGB(255, 255, 255)
+local draggingSV = false
+local draggingHue = false
+
+local function refreshColorPickerVisuals()
+	colorPickerColor = Color3.fromHSV(colorPickerHue, colorPickerSat, colorPickerVal)
+	svSquare.BackgroundColor3 = Color3.fromHSV(colorPickerHue, 1, 1)
+	svPointer.Position = UDim2.new(colorPickerSat, 0, 1 - colorPickerVal, 0)
+	huePointer.Position = UDim2.new(colorPickerHue, 0, 0.5, 0)
+	previewSwatch.BackgroundColor3 = colorPickerColor
+	hexBox.Text = colorToHex(colorPickerColor)
+	rBox.Text = tostring(math.floor(colorPickerColor.R * 255 + 0.5))
+	gBox.Text = tostring(math.floor(colorPickerColor.G * 255 + 0.5))
+	bBox.Text = tostring(math.floor(colorPickerColor.B * 255 + 0.5))
+end
+
+local function setColorPickerFromColor(color)
+	colorPickerHue, colorPickerSat, colorPickerVal = color:ToHSV()
+	refreshColorPickerVisuals()
+end
+
+local function updateFromSVInput(inputPosition)
+	local pos = svSquare.AbsolutePosition
+	local size = svSquare.AbsoluteSize
+	if size.X <= 0 or size.Y <= 0 then return end
+	local sx = math.clamp((inputPosition.X - pos.X) / size.X, 0, 1)
+	local sy = math.clamp((inputPosition.Y - pos.Y) / size.Y, 0, 1)
+	colorPickerSat = sx
+	colorPickerVal = 1 - sy
+	refreshColorPickerVisuals()
+end
+
+local function updateFromHueInput(inputPosition)
+	local pos = hueBar.AbsolutePosition
+	local size = hueBar.AbsoluteSize
+	if size.X <= 0 then return end
+	local hx = math.clamp((inputPosition.X - pos.X) / size.X, 0, 1)
+	colorPickerHue = hx
+	refreshColorPickerVisuals()
+end
+
+svButton.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingSV = true
+		updateFromSVInput(input.Position)
+	end
+end)
+
+hueButton.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingHue = true
+		updateFromHueInput(input.Position)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+		if draggingSV then
+			updateFromSVInput(input.Position)
+		elseif draggingHue then
+			updateFromHueInput(input.Position)
+		end
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingSV = false
+		draggingHue = false
+	end
+end)
+
+hexBox.FocusLost:Connect(function()
+	local color = hexToColor(hexBox.Text)
+	if color then
+		setColorPickerFromColor(color)
+	else
+		hexBox.Text = colorToHex(colorPickerColor)
+	end
+end)
+
+local function commitColorPickerRGB()
+	local r = math.clamp(tonumber(rBox.Text) or (colorPickerColor.R * 255), 0, 255)
+	local g = math.clamp(tonumber(gBox.Text) or (colorPickerColor.G * 255), 0, 255)
+	local bl = math.clamp(tonumber(bBox.Text) or (colorPickerColor.B * 255), 0, 255)
+	setColorPickerFromColor(Color3.fromRGB(r, g, bl))
+end
+rBox.FocusLost:Connect(commitColorPickerRGB)
+gBox.FocusLost:Connect(commitColorPickerRGB)
+bBox.FocusLost:Connect(commitColorPickerRGB)
+
+colorPickerCloseButton.MouseButton1Click:Connect(function()
+	colorPickerWindow.Visible = false
+end)
+
+colorPickerCancelBtn.MouseButton1Click:Connect(function()
+	colorPickerWindow.Visible = false
+end)
+
+colorPickerDoneBtn.MouseButton1Click:Connect(function()
+	colorPickerWindow.Visible = false
+	if colorPickerCallback then
+		colorPickerCallback(colorPickerColor)
+	end
+end)
+
+function openColorPicker(initialColor, onConfirm)
+	colorPickerCallback = onConfirm
+	setColorPickerFromColor(initialColor)
+	colorPickerWindow.Visible = true
+end
+end -- do (COLOR PICKER)
+
+-------------------------------------------------
+-- GRADIENT EDITOR
+-------------------------------------------------
+do
+local GRADIENT_MARKER_IMAGE = "rbxassetid://81889066747907"
+
+local gradientEditorWindow = new("Frame", {
+	Name = "GradientEditorWindow",
+	Size = UDim2.new(0, 460, 0, 190),
+	Position = UDim2.new(0.5, -230, 0.5, -95),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 19,
+	Parent = screenGui,
+})
+
+local gradientEditorTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+
+local gradientEditorTitle = new("TextLabel", {
+	Size = UDim2.new(1, -30, 1, 0),
+	Position = UDim2.new(0, 8, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "UIGradient.Color",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	TextTruncate = Enum.TextTruncate.AtEnd,
+	ZIndex = 19,
+	Parent = gradientEditorTop,
+})
+
+local gradientEditorCloseButton = new("TextButton", {
+	Size = UDim2.new(0, 22, 0, 22),
+	Position = UDim2.new(1, -25, 0, 3),
+	BackgroundColor3 = THEME.Button,
+	Font = Enum.Font.GothamBold,
+	Text = "X",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	ZIndex = 19,
+	Parent = gradientEditorTop,
+})
+
+makeDraggable(gradientEditorWindow, gradientEditorTop)
+
+local gradientBarHolder = new("Frame", {
+	Name = "GradientBar",
+	Size = UDim2.new(1, -32, 0, 90),
+	Position = UDim2.new(0, 16, 0, 36),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+new("UIStroke", { Color = THEME.Divider, Thickness = 1, Parent = gradientBarHolder })
+
+local gradientBarPreview = new("UIGradient", {
+	Parent = gradientBarHolder,
+})
+
+local gradientBarClickArea = new("TextButton", {
+	Size = UDim2.new(1, 0, 1, 0),
+	BackgroundTransparency = 1,
+	AutoButtonColor = false,
+	Text = "",
+	ZIndex = 19,
+	Parent = gradientBarHolder,
+})
+
+local gradientMarkerHolder = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 20),
+	Position = UDim2.new(0, 0, 1, 2),
+	BackgroundTransparency = 1,
+	ZIndex = 19,
+	Parent = gradientBarHolder,
+})
+
+-- Time / Color / Delete / Reset / Close row
+new("TextLabel", {
+	Size = UDim2.new(0, 40, 0, 24),
+	Position = UDim2.new(0, 16, 0, 136),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "Time",
+	TextColor3 = THEME.SubText,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+
+local gradientTimeBox = new("TextBox", {
+	Size = UDim2.new(0, 60, 0, 24),
+	Position = UDim2.new(0, 56, 0, 136),
+	BackgroundColor3 = THEME.PanelAlt,
+	ClearTextOnFocus = false,
+	Font = Enum.Font.Gotham,
+	Text = "0",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+
+new("TextLabel", {
+	Size = UDim2.new(0, 44, 0, 24),
+	Position = UDim2.new(0, 140, 0, 136),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "Color",
+	TextColor3 = THEME.SubText,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+
+local gradientColorSwatch = new("TextButton", {
+	Size = UDim2.new(0, 30, 0, 24),
+	Position = UDim2.new(0, 184, 0, 136),
+	BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+	AutoButtonColor = false,
+	Text = "",
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+new("UIStroke", { Color = THEME.Divider, Thickness = 1, Parent = gradientColorSwatch })
+
+local gradientDeleteButton = new("TextButton", {
+	Size = UDim2.new(0, 74, 0, 26),
+	Position = UDim2.new(0, 232, 0, 135),
+	BackgroundColor3 = THEME.Button,
+	Font = Enum.Font.Gotham,
+	Text = "Delete",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+
+local gradientResetButton = new("TextButton", {
+	Size = UDim2.new(0, 74, 0, 26),
+	Position = UDim2.new(1, -164, 0, 135),
+	BackgroundColor3 = THEME.Button,
+	Font = Enum.Font.Gotham,
+	Text = "Reset",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+
+local gradientCloseFooterButton = new("TextButton", {
+	Size = UDim2.new(0, 74, 0, 26),
+	Position = UDim2.new(1, -82, 0, 135),
+	BackgroundColor3 = THEME.Accent,
+	Font = Enum.Font.GothamBold,
+	Text = "Close",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 12,
+	ZIndex = 19,
+	Parent = gradientEditorWindow,
+})
+
+-- gradient editor state
+local gradientEditorTarget = nil
+local gradientKeypoints = {}
+local gradientMarkers = {}
+local selectedKeypoint = nil
+local draggingKeypoint = nil
+
+local function sortGradientKeypoints()
+	table.sort(gradientKeypoints, function(a, b) return a.Time < b.Time end)
+	local n = #gradientKeypoints
+	if n > 0 then
+		gradientKeypoints[1].Time = 0
+		gradientKeypoints[n].Time = 1
+	end
+	for i = 2, n - 1 do
+		if gradientKeypoints[i].Time <= gradientKeypoints[i - 1].Time then
+			gradientKeypoints[i].Time = gradientKeypoints[i - 1].Time + 0.0001
+		end
+	end
+	if n >= 2 and gradientKeypoints[n - 1].Time >= gradientKeypoints[n].Time then
+		gradientKeypoints[n - 1].Time = gradientKeypoints[n].Time - 0.0001
+	end
+end
+
+local function buildColorSequence()
+	local seq = {}
+	for _, kp in ipairs(gradientKeypoints) do
+		table.insert(seq, ColorSequenceKeypoint.new(kp.Time, kp.Color))
+	end
+	return seq
+end
+
+local function applyGradientToInstance()
+	if not gradientEditorTarget then return end
+	local seq = buildColorSequence()
+	local ok = pcall(function()
+		gradientEditorTarget.Color = ColorSequence.new(seq)
+		gradientBarPreview.Color = ColorSequence.new(seq)
+	end)
+	if not ok and #gradientKeypoints >= 2 then
+		local fallback = ColorSequence.new(gradientKeypoints[1].Color, gradientKeypoints[#gradientKeypoints].Color)
+		gradientEditorTarget.Color = fallback
+		gradientBarPreview.Color = fallback
+	end
+end
+
+local function refreshGradientMarkers()
+	for _, marker in ipairs(gradientMarkers) do
+		marker:Destroy()
+	end
+	gradientMarkers = {}
+
+	for _, kp in ipairs(gradientKeypoints) do
+		local marker = new("ImageButton", {
+			Name = "Marker",
+			Size = UDim2.new(0, 16, 0, 16),
+			AnchorPoint = Vector2.new(0.5, 0),
+			Position = UDim2.new(kp.Time, 0, 0, 0),
+			BackgroundTransparency = 1,
+			Image = GRADIENT_MARKER_IMAGE,
+			ImageColor3 = (kp == selectedKeypoint) and Color3.fromRGB(255, 221, 84) or Color3.fromRGB(190, 190, 190),
+			ZIndex = 20,
+			Parent = gradientMarkerHolder,
+		})
+
+		marker.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+				selectedKeypoint = kp
+				draggingKeypoint = kp
+				gradientTimeBox.Text = tostring(round(kp.Time, 3))
+				gradientColorSwatch.BackgroundColor3 = kp.Color
+				refreshGradientMarkers()
+			end
+		end)
+
+		table.insert(gradientMarkers, marker)
+	end
+end
+
+UserInputService.InputChanged:Connect(function(input)
+	if draggingKeypoint and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+		local pos = gradientBarHolder.AbsolutePosition
+		local size = gradientBarHolder.AbsoluteSize
+		if size.X > 0 then
+			local t = math.clamp((input.Position.X - pos.X) / size.X, 0, 1)
+			draggingKeypoint.Time = t
+			sortGradientKeypoints()
+			applyGradientToInstance()
+			refreshGradientMarkers()
+			if selectedKeypoint then
+				gradientTimeBox.Text = tostring(round(selectedKeypoint.Time, 3))
+			end
+		end
+	end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+		draggingKeypoint = nil
+	end
+end)
+
+gradientBarClickArea.MouseButton1Click:Connect(function()
+	if not gradientEditorTarget then return end
+	local mouse = UserInputService:GetMouseLocation()
+	local pos = gradientBarHolder.AbsolutePosition
+	local size = gradientBarHolder.AbsoluteSize
+	if size.X <= 0 then return end
+	local t = math.clamp((mouse.X - pos.X) / size.X, 0, 1)
+
+	local newColor = Color3.fromRGB(255, 255, 255)
+	for i = 1, #gradientKeypoints - 1 do
+		local a, b = gradientKeypoints[i], gradientKeypoints[i + 1]
+		if t >= a.Time and t <= b.Time then
+			local span = b.Time - a.Time
+			local alpha = span > 0 and ((t - a.Time) / span) or 0
+			newColor = a.Color:Lerp(b.Color, alpha)
+			break
+		end
+	end
+
+	local newKeypoint = {Time = t, Color = newColor}
+	table.insert(gradientKeypoints, newKeypoint)
+	sortGradientKeypoints()
+	selectedKeypoint = newKeypoint
+	applyGradientToInstance()
+	refreshGradientMarkers()
+	gradientTimeBox.Text = tostring(round(newKeypoint.Time, 3))
+	gradientColorSwatch.BackgroundColor3 = newKeypoint.Color
+end)
+
+gradientTimeBox.FocusLost:Connect(function()
+	if not selectedKeypoint then return end
+	local n = tonumber(gradientTimeBox.Text)
+	if n then
+		selectedKeypoint.Time = math.clamp(n, 0, 1)
+		sortGradientKeypoints()
+		applyGradientToInstance()
+		refreshGradientMarkers()
+	end
+	gradientTimeBox.Text = tostring(round(selectedKeypoint.Time, 3))
+end)
+
+gradientColorSwatch.MouseButton1Click:Connect(function()
+	if not selectedKeypoint then return end
+	openColorPicker(selectedKeypoint.Color, function(newColor)
+		selectedKeypoint.Color = newColor
+		gradientColorSwatch.BackgroundColor3 = newColor
+		applyGradientToInstance()
+		refreshGradientMarkers()
+	end)
+end)
+
+gradientDeleteButton.MouseButton1Click:Connect(function()
+	if not selectedKeypoint then return end
+	if #gradientKeypoints <= 2 then return end
+	for i, kp in ipairs(gradientKeypoints) do
+		if kp == selectedKeypoint then
+			table.remove(gradientKeypoints, i)
+			break
+		end
+	end
+	selectedKeypoint = gradientKeypoints[1]
+	sortGradientKeypoints()
+	applyGradientToInstance()
+	refreshGradientMarkers()
+	if selectedKeypoint then
+		gradientTimeBox.Text = tostring(round(selectedKeypoint.Time, 3))
+		gradientColorSwatch.BackgroundColor3 = selectedKeypoint.Color
+	end
+end)
+
+gradientResetButton.MouseButton1Click:Connect(function()
+	gradientKeypoints = {
+		{Time = 0, Color = Color3.fromRGB(255, 255, 255)},
+		{Time = 1, Color = Color3.fromRGB(255, 255, 255)},
+	}
+	selectedKeypoint = gradientKeypoints[1]
+	applyGradientToInstance()
+	refreshGradientMarkers()
+	gradientTimeBox.Text = "0"
+	gradientColorSwatch.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+end)
+
+local function closeGradientEditor()
+	gradientEditorWindow.Visible = false
+end
+gradientEditorCloseButton.MouseButton1Click:Connect(closeGradientEditor)
+gradientCloseFooterButton.MouseButton1Click:Connect(closeGradientEditor)
+
+function openGradientEditor(gradientInstance)
+	gradientEditorTarget = gradientInstance
+	gradientKeypoints = {}
+
+	local ok, seq = pcall(function() return gradientInstance.Color end)
+	if ok and seq then
+		for _, kp in ipairs(seq.Keypoints) do
+			table.insert(gradientKeypoints, {Time = kp.Time, Color = kp.Value})
+		end
+	end
+	if #gradientKeypoints < 2 then
+		gradientKeypoints = {
+			{Time = 0, Color = Color3.fromRGB(255, 255, 255)},
+			{Time = 1, Color = Color3.fromRGB(255, 255, 255)},
+		}
+	end
+	sortGradientKeypoints()
+	selectedKeypoint = gradientKeypoints[1]
+
+	local parentName = gradientInstance.Parent and gradientInstance.Parent.Name or "UIGradient"
+	gradientEditorTitle.Text = parentName .. ".UIGradient.Color"
+
+	gradientTimeBox.Text = tostring(round(selectedKeypoint.Time, 3))
+	gradientColorSwatch.BackgroundColor3 = selectedKeypoint.Color
+
+	applyGradientToInstance()
+	refreshGradientMarkers()
+	gradientEditorWindow.Visible = true
+end
+
+local function exportToLua(options)
+	options = options or {}
+	local lines = {}
+	local varCount = 0
+
+	local function nextVar(name)
+		varCount = varCount + 1
+		local safe = name:gsub("[^%w_]", "")
+		if safe == "" then safe = "Obj" end
+		return safe .. varCount
+	end
+
+	local rootClassName = projectGui.ClassName
+	table.insert(lines, string.format("local ProjectGui = Instance.new(%q)", rootClassName))
+	table.insert(lines, string.format("ProjectGui.Name = %q", projectGui.Name))
+	if rootClassName == "ScreenGui" then
+		table.insert(lines, "ProjectGui.ResetOnSpawn = false")
+	end
+	table.insert(lines, "ProjectGui.Parent = game:GetService(\"Players\").LocalPlayer:WaitForChild(\"PlayerGui\")")
+	table.insert(lines, "")
+
+	local function exportInstance(inst, parentVar)
+		if isOverlay(inst) then return end
+		local className = inst.ClassName
+		local props = EXPORTABLE_PROPS[className]
+		local varName = nextVar(inst.Name)
+
+		if options.comments then
+			table.insert(lines, string.format("-- %s: %q", className, inst.Name))
+		end
+		table.insert(lines, string.format("local %s = Instance.new(%q)", varName, className))
+
+		if props then
+			for _, propName in ipairs(props) do
+				local ok, value = pcall(function() return inst[propName] end)
+				if ok and value ~= nil then
+					if propName == "Size" and options.autoSizeScale and inst:IsA("GuiObject") then
+						local parentObj = inst.Parent
+						local parentSize = (parentObj and parentObj:IsA("GuiObject")) and parentObj.AbsoluteSize or inst.AbsoluteSize
+						local sx = parentSize.X > 0 and (inst.AbsoluteSize.X / parentSize.X) or 0
+						local sy = parentSize.Y > 0 and (inst.AbsoluteSize.Y / parentSize.Y) or 0
+						table.insert(lines, string.format("%s.Size = UDim2.new(%s, 0, %s, 0)", varName, round(sx, 4), round(sy, 4)))
+					elseif propName == "Position" and options.autoPositionScale and inst:IsA("GuiObject") then
+						local parentObj = inst.Parent
+						local parentSize = (parentObj and parentObj:IsA("GuiObject")) and parentObj.AbsoluteSize or inst.AbsoluteSize
+						local parentPos = (parentObj and parentObj:IsA("GuiObject")) and parentObj.AbsolutePosition or Vector2.new(0, 0)
+						local relX = inst.AbsolutePosition.X - parentPos.X
+						local relY = inst.AbsolutePosition.Y - parentPos.Y
+						local px = parentSize.X > 0 and (relX / parentSize.X) or 0
+						local py = parentSize.Y > 0 and (relY / parentSize.Y) or 0
+						table.insert(lines, string.format("%s.Position = UDim2.new(%s, 0, %s, 0)", varName, round(px, 4), round(py, 4)))
+					else
+						table.insert(lines, string.format("%s.%s = %s", varName, propName, luaValue(value)))
+					end
+				end
+			end
+		else
+			table.insert(lines, string.format("%s.Name = %q", varName, inst.Name))
+		end
+
+		table.insert(lines, string.format("%s.Parent = %s", varName, parentVar))
+
+		if options.autoAddConstraint and inst:IsA("GuiObject") and inst.AbsoluteSize.Y > 0 then
+			local ratio = inst.AbsoluteSize.X / inst.AbsoluteSize.Y
+			local constraintVar = varName .. "Ratio"
+			table.insert(lines, string.format("local %s = Instance.new(\"UIAspectRatioConstraint\")", constraintVar))
+			table.insert(lines, string.format("%s.AspectRatio = %s", constraintVar, round(ratio, 3)))
+			table.insert(lines, string.format("%s.Parent = %s", constraintVar, varName))
+		end
+		table.insert(lines, "")
+		for _, child in ipairs(inst:GetChildren()) do
+			exportInstance(child, varName)
+		end
+	end
+
+	for _, child in ipairs(projectGui:GetChildren()) do
+		exportInstance(child, "ProjectGui")
+	end
+	return table.concat(lines, "\n")
+end
+
+convertButton.MouseButton1Click:Connect(function()
+	local options = {
+		autoSizeScale = toggleSizeScale.Get(),
+		autoPositionScale = togglePositionScale.Get(),
+		autoAddConstraint = toggleConstraint.Get(),
+		comments = toggleComments.Get(),
+	}
+	local code = exportToLua(options)
+	local isMobileNow = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
+	if isMobileNow and #code > MOBILE_CODE_CHUNK_LIMIT then
+		codeChunks = splitCodeIntoChunks(code, MOBILE_CODE_CHUNK_LIMIT)
+	else
+		codeChunks = {code}
+	end
+	codeChunkIndex = 1
+	updateCodeOutputView()
+	gui2luaWindow.Visible = false
+	codeOutputWindow.Visible = true
+end)
+end -- do (EDITOR DE GRADIENTE)
+
+-------------------------------------------------
+-- OPTIONS MENU
+-------------------------------------------------
+local optionsMenu -- usado também em applyTheme() lá na seção TEMA
+do
+local optionsButton = new("TextButton", {
+	Name = "OptionsButton",
+	Size = UDim2.new(0, 110, 0, 40),
+	Position = UDim2.new(1, -124, 0, 10),
+	BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+	BackgroundTransparency = 0.19,
+	AutoButtonColor = false,
+	Text = "",
+	Active = true,
+	Selectable = true,
+	Parent = screenGui,
+})
+new("UICorner", { CornerRadius = UDim.new(1, 0), Parent = optionsButton })
+
+new("ImageLabel", {
+	Name = "GearIcon",
+	Size = UDim2.new(0, 24, 0, 24),
+	Position = UDim2.new(0, 12, 0.5, -12),
+	BackgroundTransparency = 1,
+	Image = ICONS.Gear,
+	ImageColor3 = THEME.Text,
+	ScaleType = Enum.ScaleType.Fit,
+	Parent = optionsButton,
+})
+
+new("TextLabel", {
+	Name = "Label",
+	Size = UDim2.new(1, -48, 1, 0),
+	Position = UDim2.new(0, 42, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Options",
+	TextColor3 = THEME.Text,
+	TextSize = 14,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	Parent = optionsButton,
+})
+
+-- Horizontal-only drag
+local function makeHorizontalDraggable(frame)
+	local dragging = false
+	local dragInput, dragStart, startPos
+
+	local function update(input)
+		if not dragging then return end
+		local delta = input.Position - dragStart
+		frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset)
+	end
+
+	frame.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			dragStart = input.Position
+			startPos = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+				end
+			end)
+		end
+	end)
+
+	frame.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			update(input)
+		end
+	end)
+end
+makeHorizontalDraggable(optionsButton)
+
+local OPTIONS_MENU_HEIGHT = 5 * 38 + 16
+
+optionsMenu = new("Frame", {
+	Name = "OptionsMenu",
+	Size = UDim2.new(0, 180, 0, OPTIONS_MENU_HEIGHT),
+	Position = UDim2.new(0, 655, 0, 59),
+	BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+	BackgroundTransparency = 0.19,
+	ClipsDescendants = true,
+	Visible = true,
+	ZIndex = 12,
+	Parent = screenGui,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 10), Parent = optionsMenu })
+
+-- Sempre calcula a posição do menu grudado embaixo do botão (estilo TopBarPlus).
+-- Usa AbsoluteSize do próprio menu (e não Size.X.Offset) pra funcionar mesmo
+-- durante o tween de abertura/fechamento.
+local function repositionOptionsMenu()
+	local btnAbsPos = optionsButton.AbsolutePosition
+	local btnAbsSize = optionsButton.AbsoluteSize
+	optionsMenu.Position = UDim2.fromOffset(
+		btnAbsPos.X + btnAbsSize.X - optionsMenu.AbsoluteSize.X,
+		btnAbsPos.Y + btnAbsSize.Y + 6
+	)
+end
+task.defer(repositionOptionsMenu)
+
+local optionsMenuList = new("Frame", {
+	Size = UDim2.new(1, -12, 0, OPTIONS_MENU_HEIGHT - 12),
+	Position = UDim2.new(0, 6, 0, 6),
+	BackgroundTransparency = 1,
+	ZIndex = 12,
+	Parent = optionsMenu,
+})
+
+new("UIListLayout", {
+	Padding = UDim.new(0, 4),
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Parent = optionsMenuList,
+})
+
+local function menuButton(order, text, iconId)
+	local btn = new("TextButton", {
+		Size = UDim2.new(1, 0, 0, 34),
+		BackgroundColor3 = THEME.Button,
+		AutoButtonColor = false,
+		Font = Enum.Font.Gotham,
+		Text = "",
+		TextColor3 = THEME.Text,
+		TextSize = 13,
+		LayoutOrder = order,
+		ZIndex = 12,
+		Parent = optionsMenuList,
+	})
+	new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = btn })
+
+	if iconId then
+		new("ImageLabel", {
+			Size = UDim2.new(0, 18, 0, 18),
+			Position = UDim2.new(0, 10, 0.5, -9),
+			BackgroundTransparency = 1,
+			Image = iconId,
+			ScaleType = Enum.ScaleType.Fit,
+			ZIndex = 13,
+			Parent = btn,
+		})
+	end
+
+	new("TextLabel", {
+		Size = UDim2.new(1, -40, 1, 0),
+		Position = UDim2.new(0, 34, 0, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = text,
+		TextColor3 = THEME.Text,
+		TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		ZIndex = 13,
+		Parent = btn,
+	})
+
+	btn.MouseEnter:Connect(function() btn.BackgroundColor3 = THEME.ButtonHover end)
+	btn.MouseLeave:Connect(function() btn.BackgroundColor3 = THEME.Button end)
+	return btn
+end
+
+-- Only closes via the Options button, not on selection
+menuButton(1, "explorer", ICONS.Explorer).MouseButton1Click:Connect(function()
+	explorerWindow.Visible = not explorerWindow.Visible
+end)
+
+menuButton(2, "properties", ICONS.Properties).MouseButton1Click:Connect(function()
+	propertiesWindow.Visible = not propertiesWindow.Visible
+end)
+
+menuButton(3, "settings", ICONS.Settings).MouseButton1Click:Connect(function()
+	settingsWindow.Visible = not settingsWindow.Visible
+end)
+
+menuButton(4, "save / load", ICONS.Save).MouseButton1Click:Connect(function()
+	saveLoadWindow.Visible = not saveLoadWindow.Visible
+end)
+
+menuButton(5, "gui2lua", ICONS.GuiToLua).MouseButton1Click:Connect(function()
+	gui2luaWindow.Visible = true
+end)
+
+-- Maximize/minimize tween
+local optionsMenuOpen = false
+local optionsMenuOriginalSize = UDim2.new(0, 180, 0, OPTIONS_MENU_HEIGHT)
+local optionsMenuMinimizedSize = UDim2.new(0, 180, 0, 0)
+optionsMenu.Size = optionsMenuMinimizedSize
+
+-- Enquanto o menu estiver aberto, a posição é recalculada every frame,
+-- então ele nunca "volta pra cima" nem fica preso atrás do botão,
+-- não importa o que tenha acontecido antes (drag, resize, etc).
+local optionsMenuSyncConn = nil
+local function setOptionsMenuSyncing(syncing)
+	if optionsMenuSyncConn then
+		optionsMenuSyncConn:Disconnect()
+		optionsMenuSyncConn = nil
+	end
+	if syncing then
+		repositionOptionsMenu()
+		optionsMenuSyncConn = RunService.RenderStepped:Connect(repositionOptionsMenu)
+	end
+end
+
+optionsButton.MouseButton1Click:Connect(function()
+	optionsMenuOpen = not optionsMenuOpen
+	setOptionsMenuSyncing(optionsMenuOpen)
+
+	local targetSize = optionsMenuOpen and optionsMenuOriginalSize or optionsMenuMinimizedSize
+	local tweenInfo = TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+	TweenService:Create(optionsMenu, tweenInfo, { Size = targetSize }):Play()
+end)
+end -- do (OPTIONS MENU)
+
+-------------------------------------------------
+-- SELECTION
+-------------------------------------------------
+function clearHighlight()
+	if selected then
+		local overlay = selected:FindFirstChild("__SelectionOverlay")
+		if overlay then overlay:Destroy() end
+	end
+end
+
+function highlight(inst) end
+
+function selectInstance(inst)
+	if selected == inst then return end
+	clearHighlight()
+	selected = inst
+	destroyBoundingBox()
+	if inst and inst:IsA("GuiObject") and inst ~= projectGui then
+		createBoundingBox(inst)
+	end
+	refreshProperties()
+
+	for _, row in pairs(explorerRows) do
+		if row.Instance == selected then
+			row.Button.BackgroundColor3 = THEME.RowSelected
+		else
+			row.Button.BackgroundColor3 = THEME.Panel
+		end
+	end
+end
+
+-------------------------------------------------
+-- PROPERTIES
+-------------------------------------------------
+function buildPropertyRow(schemaEntry, order)
+	local ok, value = pcall(function() return selected[schemaEntry.Key] end)
+	if not ok and schemaEntry.Type ~= "source" then return nil end
+
+	-- Source: LocalScript/ModuleScript only
+	if schemaEntry.Type == "source" then
+		if not (selected:IsA("LocalScript") or selected:IsA("ModuleScript")) then
+			return nil
+		end
+	end
+
+	local row = new("Frame", {
+		Size = UDim2.new(1, 0, 0, 22),
+		BackgroundTransparency = 1,
+		LayoutOrder = order,
+	})
+	new("TextLabel", {
+		Size = UDim2.new(0.46, 0, 1, 0),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.Gotham,
+		Text = schemaEntry.Label,
+		TextColor3 = THEME.SubText,
+		TextSize = 11,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+
+	local t = schemaEntry.Type
+
+	if t == "source" then
+		local btn = new("TextButton", {
+			Size = UDim2.new(0.54, 0, 1, 0),
+			Position = UDim2.new(0.46, 0, 0, 0),
+			BackgroundColor3 = THEME.Accent,
+			Font = Enum.Font.GothamBold,
+			Text = "Use / Edit",
+			TextColor3 = Color3.fromRGB(255, 255, 255),
+			TextSize = 11,
+			Parent = row,
+		})
+		new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = btn })
+		btn.MouseButton1Click:Connect(function()
+			openSourceEditor(selected)
+		end)
+
+	elseif t == "readonly" then
+		local text
+		local vt = typeof(value)
+		if vt == "Vector2" then
+			text = string.format("%d, %d", round(value.X, 0), round(value.Y, 0))
+		elseif vt == "number" then
+			text = tostring(round(value, 2))
+		else
+			text = tostring(value)
+		end
+		new("TextLabel", {
+			Size = UDim2.new(0.54, 0, 1, 0),
+			Position = UDim2.new(0.46, 0, 0, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham,
+			Text = text,
+			TextColor3 = THEME.SubText,
+			TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
+			Parent = row,
+		})
+
+	elseif t == "bool" then
+		local box = new("ImageButton", {
+			Size = UDim2.new(0, 20, 0, 20),
+			Position = UDim2.new(0.46, 0, 0, 1),
+			BackgroundColor3 = THEME.PanelAlt,
+			Image = value and ICONS.ToggleCheck or "",
+			ScaleType = Enum.ScaleType.Fit,
+			Parent = row,
+		})
+		new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = box })
+		box.MouseButton1Click:Connect(function()
+			local newValue = not selected[schemaEntry.Key]
+			selected[schemaEntry.Key] = newValue
+			box.Image = newValue and ICONS.ToggleCheck or ""
+		end)
+
+	elseif t == "string" then
+		local box = new("TextBox", {
+			Size = UDim2.new(0.54, 0, 1, 0),
+			Position = UDim2.new(0.46, 0, 0, 0),
+			BackgroundColor3 = THEME.PanelAlt,
+			ClearTextOnFocus = false,
+			Font = Enum.Font.Gotham,
+			Text = tostring(value),
+			TextColor3 = THEME.Text,
+			TextSize = 11,
+			Parent = row,
+		})
+		box.FocusLost:Connect(function()
+			local text = box.Text
+			-- Image/Video: raw asset id is enough
+						if (schemaEntry.Key == "Image" or schemaEntry.Key == "Video") and text ~= "" then
+				if not (text:match("^rbxassetid://") or text:match("^https?://") or text:match("^rbxthumb://")) then
+					local digits = text:match("^%s*(%d+)%s*$") or text:match("(%d+)")
+					if digits then
+						text = "rbxassetid://" .. digits
+					end
+				end
+				box.Text = text
+			end
+			selected[schemaEntry.Key] = text
+		end)
+
+	elseif t == "number" then
+		local box = new("TextBox", {
+			Size = UDim2.new(0.54, 0, 1, 0),
+			Position = UDim2.new(0.46, 0, 0, 0),
+			BackgroundColor3 = THEME.PanelAlt,
+			ClearTextOnFocus = false,
+			Font = Enum.Font.Gotham,
+			Text = tostring(round(value, 3)),
+			TextColor3 = THEME.Text,
+			TextSize = 11,
+			Parent = row,
+		})
+		box.FocusLost:Connect(function()
+			local n = tonumber(box.Text)
+			if n then selected[schemaEntry.Key] = n end
+		end)
+
+	elseif t == "color" then
+		if typeof(value) == "ColorSequence" then
+			local gradientButton = new("TextButton", {
+				Size = UDim2.new(0.54, 0, 0, 20),
+				Position = UDim2.new(0.46, 0, 0, 0),
+				BackgroundColor3 = THEME.PanelAlt,
+				AutoButtonColor = false,
+				Font = Enum.Font.Gotham,
+				Text = "Gradient",
+				TextColor3 = THEME.Text,
+				TextSize = 11,
+				Parent = row,
+			})
+			gradientButton.MouseEnter:Connect(function() gradientButton.BackgroundColor3 = THEME.ButtonHover end)
+			gradientButton.MouseLeave:Connect(function() gradientButton.BackgroundColor3 = THEME.PanelAlt end)
+			gradientButton.MouseButton1Click:Connect(function()
+				openGradientEditor(selected)
+			end)
+		else
+			local swatch = new("TextButton", {
+				Size = UDim2.new(0.54, 0, 0, 18),
+				Position = UDim2.new(0.46, 0, 0, 1),
+				BackgroundColor3 = value,
+				AutoButtonColor = false,
+				Text = "",
+				Parent = row,
+			})
+			new("UIStroke", { Color = THEME.Divider, Thickness = 1, Parent = swatch })
+			swatch.MouseButton1Click:Connect(function()
+				openColorPicker(selected[schemaEntry.Key], function(newColor)
+					selected[schemaEntry.Key] = newColor
+					swatch.BackgroundColor3 = newColor
+				end)
+			end)
+		end
+
+	elseif t == "vector2" then
+		local boxes = {}
+		local values = {value.X, value.Y}
+		for i = 1, 2 do
+			boxes[i] = new("TextBox", {
+				Size = UDim2.new(0.27, 0, 1, 0),
+				Position = UDim2.new(0.46 + (i - 1) * 0.27, 0, 0, 0),
+				BackgroundColor3 = THEME.PanelAlt,
+				Font = Enum.Font.Gotham,
+				Text = tostring(round(values[i], 3)),
+				TextColor3 = THEME.Text,
+				TextSize = 11,
+				Parent = row,
+			})
+		end
+		local function commit()
+			local x = tonumber(boxes[1].Text) or selected[schemaEntry.Key].X
+			local y = tonumber(boxes[2].Text) or selected[schemaEntry.Key].Y
+			selected[schemaEntry.Key] = Vector2.new(x, y)
+		end
+		boxes[1].FocusLost:Connect(commit)
+		boxes[2].FocusLost:Connect(commit)
+
+	elseif t == "udim" then
+		local boxes = {}
+		local values = {value.Scale, value.Offset}
+		for i = 1, 2 do
+			boxes[i] = new("TextBox", {
+				Size = UDim2.new(0.27, 0, 1, 0),
+				Position = UDim2.new(0.46 + (i - 1) * 0.27, 0, 0, 0),
+				BackgroundColor3 = THEME.PanelAlt,
+				Font = Enum.Font.Gotham,
+				Text = tostring(round(values[i], 3)),
+				TextColor3 = THEME.Text,
+				TextSize = 11,
+				Parent = row,
+			})
+		end
+		local function commit()
+			local s = tonumber(boxes[1].Text) or selected[schemaEntry.Key].Scale
+			local o = tonumber(boxes[2].Text) or selected[schemaEntry.Key].Offset
+			selected[schemaEntry.Key] = UDim.new(s, o)
+		end
+		boxes[1].FocusLost:Connect(commit)
+		boxes[2].FocusLost:Connect(commit)
+
+	elseif t == "udim2" then
+		row.Size = UDim2.new(1, 0, 0, 42)
+		local boxes = {}
+		local values = {value.X.Scale, value.X.Offset, value.Y.Scale, value.Y.Offset}
+		for i = 1, 4 do
+			boxes[i] = new("TextBox", {
+				Size = UDim2.new(0.24, -2, 0, 18),
+				Position = UDim2.new((i - 1) * 0.25, 0, 0, 22),
+				BackgroundColor3 = THEME.PanelAlt,
+				Font = Enum.Font.Gotham,
+				Text = tostring(round(values[i], 3)),
+				TextColor3 = THEME.Text,
+				TextSize = 11,
+				Parent = row,
+			})
+		end
+		local function commit()
+			local xs = tonumber(boxes[1].Text) or selected[schemaEntry.Key].X.Scale
+			local xo = tonumber(boxes[2].Text) or selected[schemaEntry.Key].X.Offset
+			local ys = tonumber(boxes[3].Text) or selected[schemaEntry.Key].Y.Scale
+			local yo = tonumber(boxes[4].Text) or selected[schemaEntry.Key].Y.Offset
+			selected[schemaEntry.Key] = UDim2.new(xs, xo, ys, yo)
+			if selected:IsA("GuiObject") then
+				updateBoundingBox()
+			end
+		end
+		for _, box in ipairs(boxes) do
+			box.FocusLost:Connect(commit)
+		end
+
+	elseif t == "enum" then
+		local box = new("TextButton", {
+			Size = UDim2.new(0.54, 0, 1, 0),
+			Position = UDim2.new(0.46, 0, 0, 0),
+			BackgroundColor3 = THEME.PanelAlt,
+			Font = Enum.Font.Gotham,
+			Text = value.Name,
+			TextColor3 = THEME.Text,
+			TextSize = 11,
+			Parent = row,
+		})
+		box.MouseButton1Click:Connect(function()
+			local items = schemaEntry.Enum:GetEnumItems()
+			local currentValue = selected[schemaEntry.Key]
+			local currentIndex = 1
+			for i, item in ipairs(items) do
+				if item == currentValue then
+					currentIndex = i
+					break
+				end
+			end
+			local nextItem = items[(currentIndex % #items) + 1]
+			selected[schemaEntry.Key] = nextItem
+			box.Text = nextItem.Name
+		end)
+	end
+
+	return row
+end
+
+function refreshProperties()
+	for _, child in ipairs(propertiesList:GetChildren()) do
+		if child:IsA("GuiObject") then
+			child:Destroy()
+		end
+	end
+	if not selected then return end
+
+	propertiesTitle.Text = string.format('properties - %s "%s"',
+		CLASS_LABELS_PT[selected.ClassName] or selected.ClassName, selected.Name)
+
+	local searchText = propertiesSearch.Text:lower()
+	local order = 0
+	for _, entry in ipairs(PROPERTY_SCHEMA) do
+		if searchText == "" or entry.Label:lower():find(searchText, 1, true) then
+			local row = buildPropertyRow(entry, order + 1)
+			if row then
+				order = order + 1
+				row.Parent = propertiesList
+			end
+		end
+	end
+
+	-- Corner control (round/rectangular), ScrollingFrame only
+		if selected.ClassName == "ScrollingFrame" and (searchText == "" or ("canto"):find(searchText, 1, true)) then
+		order = order + 1
+		local cornerRow = new("Frame", {
+			Size = UDim2.new(1, 0, 0, 20),
+			BackgroundTransparency = 1,
+			LayoutOrder = order,
+			Parent = propertiesList,
+		})
+		new("TextLabel", {
+			Size = UDim2.new(0.46, 0, 1, 0),
+			BackgroundTransparency = 1,
+			Font = Enum.Font.Gotham,
+			Text = "Corner",
+			TextColor3 = THEME.SubText,
+			TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Parent = cornerRow,
+		})
+
+		local existingCorner = selected:FindFirstChildOfClass("UICorner")
+		local cornerRadiusBox
+		local cornerToggle = new("TextButton", {
+			Size = UDim2.new(0.28, -2, 1, 0),
+			Position = UDim2.new(0.46, 0, 0, 0),
+			BackgroundColor3 = THEME.PanelAlt,
+			Font = Enum.Font.Gotham,
+			Text = existingCorner and "Arredondado" or "Retangular",
+			TextColor3 = THEME.Text,
+			TextSize = 10,
+			Parent = cornerRow,
+		})
+		cornerRadiusBox = new("TextBox", {
+			Size = UDim2.new(0.26, 0, 1, 0),
+			Position = UDim2.new(0.74, 0, 0, 0),
+			BackgroundColor3 = THEME.PanelAlt,
+			ClearTextOnFocus = false,
+			Font = Enum.Font.Gotham,
+			Text = existingCorner and tostring(existingCorner.CornerRadius.Offset) or "0",
+			TextColor3 = THEME.Text,
+			TextSize = 10,
+			Visible = existingCorner ~= nil,
+			Parent = cornerRow,
+		})
+
+		cornerToggle.MouseButton1Click:Connect(function()
+			local current = selected:FindFirstChildOfClass("UICorner")
+			if current then
+				current:Destroy()
+				cornerToggle.Text = "Rectangular"
+				cornerRadiusBox.Visible = false
+			else
+				new("UICorner", {
+					CornerRadius = UDim.new(0, 8),
+					Parent = selected,
+				})
+				cornerToggle.Text = "Rounded"
+				cornerRadiusBox.Text = "8"
+				cornerRadiusBox.Visible = true
+			end
+			refreshExplorer()
+		end)
+
+		cornerRadiusBox.FocusLost:Connect(function()
+			local n = tonumber(cornerRadiusBox.Text)
+			local current = selected:FindFirstChildOfClass("UICorner")
+			if n and current then
+				current.CornerRadius = UDim.new(0, n)
+			end
+		end)
+	end
+end
+
+-------------------------------------------------
+-- EXPLORER TREE
+-------------------------------------------------
+function clearExplorer()
+	for _, row in pairs(explorerRows) do
+		if row.Row then row.Row:Destroy() end
+	end
+	explorerRows = {}
+end
+
+local TREE_LINE_COLOR = Color3.fromRGB(255, 140, 0)
+local TREE_STEP_PX = 14
+
+function buildExplorer(inst, depth, order, ancestorIsLast)
+	if isOverlay(inst) then return order end
+	ancestorIsLast = ancestorIsLast or {}
+
+	order = order + 1
+	local row = new("Frame", {
+		Name = "Row",
+		Size = UDim2.new(1, 0, 0, 24),
+		BackgroundColor3 = THEME.Panel,
+		LayoutOrder = order,
+		Parent = explorerList,
+	})
+
+	local indentPx = depth * TREE_STEP_PX
+
+	-- Thin tree connector lines (parent -> child)
+			if depth > 0 then
+		for level = 1, depth - 1 do
+			if not ancestorIsLast[level] then
+				local colX = (level - 1) * TREE_STEP_PX + 7
+				new("Frame", {
+					Name = "TreeTrunk",
+					Size = UDim2.new(0, 1, 1, 0),
+					Position = UDim2.new(0, colX, 0, 0),
+					BackgroundColor3 = TREE_LINE_COLOR,
+					BorderSizePixel = 0,
+					ZIndex = 2,
+					Parent = row,
+				})
+			end
+		end
+
+		local myColX = (depth - 1) * TREE_STEP_PX + 7
+		local isLastHere = ancestorIsLast[depth]
+
+		-- top half (always)
+		new("Frame", {
+			Name = "TreeBranchTop",
+			Size = UDim2.new(0, 1, 0, 12),
+			Position = UDim2.new(0, myColX, 0, 0),
+			BackgroundColor3 = TREE_LINE_COLOR,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+			Parent = row,
+		})
+		-- bottom half (only if more siblings follow)
+				if not isLastHere then
+			new("Frame", {
+				Name = "TreeBranchBottom",
+				Size = UDim2.new(0, 1, 0, 12),
+				Position = UDim2.new(0, myColX, 0, 12),
+				BackgroundColor3 = TREE_LINE_COLOR,
+				BorderSizePixel = 0,
+				ZIndex = 2,
+				Parent = row,
+			})
+		end
+		-- horizontal branch to the label
+		new("Frame", {
+			Name = "TreeBranchH",
+			Size = UDim2.new(0, indentPx - myColX, 0, 1),
+			Position = UDim2.new(0, myColX, 0, 12),
+			BackgroundColor3 = TREE_LINE_COLOR,
+			BorderSizePixel = 0,
+			ZIndex = 2,
+			Parent = row,
+		})
+	end
+
+	local selectButton = new("TextButton", {
+		Size = UDim2.new(1, -28 - indentPx, 1, 0),
+		Position = UDim2.new(0, indentPx, 0, 0),
+		BackgroundColor3 = (inst == selected) and THEME.RowSelected or THEME.Panel,
+		AutoButtonColor = false,
+		Font = Enum.Font.Gotham,
+		Text = (CLASS_LABELS_PT[inst.ClassName] or inst.ClassName) .. ' "' .. inst.Name .. '"',
+		TextColor3 = THEME.Text,
+		TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = row,
+	})
+	selectButton.MouseButton1Click:Connect(function()
+		selectInstance(inst)
+	end)
+
+	local plusButton = new("ImageButton", {
+		Size = UDim2.new(0, 20, 0, 20),
+		Position = UDim2.new(1, -24, 0, 2),
+		BackgroundColor3 = THEME.Button,
+		Image = ICONS.Plus,
+		ScaleType = Enum.ScaleType.Fit,
+		ZIndex = 2,
+		Parent = row,
+	})
+	new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = plusButton })
+	plusButton.MouseButton1Click:Connect(function()
+		openAddElementPopup(inst, row)
+	end)
+
+	explorerRows[#explorerRows + 1] = { Row = row, Button = selectButton, Instance = inst }
+
+	local visibleChildren = {}
+	for _, child in ipairs(inst:GetChildren()) do
+		if not isOverlay(child) then
+			table.insert(visibleChildren, child)
+		end
+	end
+
+	for i, child in ipairs(visibleChildren) do
+		local childAncestorIsLast = {}
+		for k, v in pairs(ancestorIsLast) do
+			childAncestorIsLast[k] = v
+		end
+		childAncestorIsLast[depth + 1] = (i == #visibleChildren)
+		order = buildExplorer(child, depth + 1, order, childAncestorIsLast)
+	end
+	return order
+end
+
+function refreshExplorer()
+	clearExplorer()
+	buildExplorer(projectGui, 0, 0)
+end
+
+-------------------------------------------------
+-- ELEMENT CREATION
+-------------------------------------------------
+function addElement(className, targetInstance)
+	elementCounter = elementCounter + 1
+	local defaults = CLASS_DEFAULTS[className] or {}
+	local props = {}
+	for k, v in pairs(defaults) do
+		props[k] = v
+	end
+	props.Name = className .. elementCounter
+
+	local parent = targetInstance or projectGui
+	local inst = new(className, props)
+	inst.Parent = parent
+
+	if (className == "LocalScript" or className == "ModuleScript") and defaults.Source then
+		inst.Source = defaults.Source
+	end
+
+	-- ScrollingFrame starts rounded (can go rectangular)
+		if className == "ScrollingFrame" then
+		new("UICorner", {
+			CornerRadius = UDim.new(0, 8),
+			Parent = inst,
+		})
+	end
+
+	refreshExplorer()
+	selectInstance(inst)
+end
+
+-------------------------------------------------
+-- THEME
+-------------------------------------------------
+function applyTheme(themeName)
+	if not THEMES[themeName] then return end
+	currentThemeName = themeName
+	for k, v in pairs(THEMES[themeName]) do
+		THEME[k] = v
+	end
+
+	explorerWindow.BackgroundColor3 = THEME.Background
+	propertiesWindow.BackgroundColor3 = THEME.Background
+	settingsWindow.BackgroundColor3 = THEME.Background
+	saveLoadWindow.BackgroundColor3 = THEME.Background
+	gui2luaWindow.BackgroundColor3 = THEME.Background
+	addElementPopup.BackgroundColor3 = THEME.Background
+	codeOutputWindow.BackgroundColor3 = THEME.Panel
+	-- optionsMenu color is fixed, not theme-based
+	sourceEditorWindow.BackgroundColor3 = THEME.Background
+
+	explorerTop.BackgroundColor3 = THEME.Panel
+	propertiesTop.BackgroundColor3 = THEME.Panel
+	settingsTop.BackgroundColor3 = THEME.Panel
+	saveLoadTop.BackgroundColor3 = THEME.Panel
+	gui2luaTop.BackgroundColor3 = THEME.Panel
+	addElementTop.BackgroundColor3 = THEME.Panel
+	codeOutputTop.BackgroundColor3 = THEME.PanelAlt
+	sourceEditorTop.BackgroundColor3 = THEME.Panel
+	actionBar.BackgroundColor3 = THEME.Panel
+
+	for _, t in ipairs({themeToggleBlack, themeToggleWhite}) do
+		local active = (t.themeName == currentThemeName)
+		t.track.BackgroundColor3 = active and THEME.Accent or THEME.Button
+		t.knob.Position = active and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+	end
+
+	refreshExplorer()
+	refreshProperties()
+end
+
+
+-------------------------------------------------
+-- MOD GUI GAME
+-------------------------------------------------
+do
+local modGuiWindow = new("Frame", {
+	Name = "ModGuiWindow",
+	Size = UDim2.new(0, 320, 0, 220),
+	Position = UDim2.new(0.5, -160, 0.5, -110),
+	BackgroundColor3 = THEME.Background,
+	Visible = false,
+	ZIndex = 35,
+	Parent = screenGui,
+})
+
+local modGuiTop = new("Frame", {
+	Size = UDim2.new(1, 0, 0, 28),
+	BackgroundColor3 = THEME.Panel,
+	ZIndex = 35,
+	Parent = modGuiWindow,
+})
+new("TextLabel", {
+	Size = UDim2.new(1, -36, 1, 0),
+	Position = UDim2.new(0, 10, 0, 0),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.GothamBold,
+	Text = "Model the game GUI",
+	TextColor3 = THEME.Text,
+	TextSize = 13,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 35,
+	Parent = modGuiTop,
+})
+local modGuiCloseBtn = new("ImageButton", {
+	Size = UDim2.new(0, 22, 0, 22),
+	Position = UDim2.new(1, -26, 0, 3),
+	BackgroundTransparency = 1,
+	Image = ICONS.Close,
+	ScaleType = Enum.ScaleType.Fit,
+	ZIndex = 36,
+	Parent = modGuiTop,
+})
+makeDraggable(modGuiWindow, modGuiTop)
+
+new("TextLabel", {
+	Size = UDim2.new(1, -20, 0, 20),
+	Position = UDim2.new(0, 10, 0, 40),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "Model CoreGui",
+	TextColor3 = THEME.SubText,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 35,
+	Parent = modGuiWindow,
+})
+
+local coreGuiDrop = new("TextButton", {
+	Size = UDim2.new(1, -20, 0, 28),
+	Position = UDim2.new(0, 10, 0, 62),
+	BackgroundColor3 = THEME.PanelAlt,
+	Font = Enum.Font.Gotham,
+	Text = "none",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 35,
+	Parent = modGuiWindow,
+})
+new("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = coreGuiDrop })
+new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = coreGuiDrop })
+
+new("TextLabel", {
+	Size = UDim2.new(1, -20, 0, 20),
+	Position = UDim2.new(0, 10, 0, 100),
+	BackgroundTransparency = 1,
+	Font = Enum.Font.Gotham,
+	Text = "Player GUI",
+	TextColor3 = THEME.SubText,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 35,
+	Parent = modGuiWindow,
+})
+
+local playerGuiDrop = new("TextButton", {
+	Size = UDim2.new(1, -20, 0, 28),
+	Position = UDim2.new(0, 10, 0, 122),
+	BackgroundColor3 = THEME.PanelAlt,
+	Font = Enum.Font.Gotham,
+	Text = "none",
+	TextColor3 = THEME.Text,
+	TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left,
+	ZIndex = 35,
+	Parent = modGuiWindow,
+})
+new("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = playerGuiDrop })
+new("UICorner", { CornerRadius = UDim.new(0, 4), Parent = playerGuiDrop })
+
+local modGuiApplyBtn = new("TextButton", {
+	Size = UDim2.new(1, -20, 0, 32),
+	Position = UDim2.new(0, 10, 1, -44),
+	BackgroundColor3 = THEME.Accent,
+	Font = Enum.Font.GothamBold,
+	Text = "Apply / Close",
+	TextColor3 = Color3.fromRGB(255, 255, 255),
+	TextSize = 13,
+	ZIndex = 35,
+	Parent = modGuiWindow,
+})
+new("UICorner", { CornerRadius = UDim.new(0, 6), Parent = modGuiApplyBtn })
+
+local coreGuiList = { "none" }
+local playerGuiList = { "none" }
+local selectedCoreGuiName = "none"
+local selectedPlayerGuiName = "none"
+local editingExternalGui = nil
+
+local function refreshGuiLists()
+	coreGuiList = { "none" }
+	playerGuiList = { "none" }
+	-- CoreGui (may fail without permission)
+	pcall(function()
+		local CoreGui = game:GetService("CoreGui")
+		for _, child in ipairs(CoreGui:GetChildren()) do
+			if child:IsA("ScreenGui") or child:IsA("LayerCollector") or child:IsA("Folder") then
+				table.insert(coreGuiList, child.Name)
+			end
+		end
+	end)
+	for _, child in ipairs(PlayerGui:GetChildren()) do
+		if child:IsA("ScreenGui") and child.Name ~= "GuiBuilderTool" then
+			table.insert(playerGuiList, child.Name)
+		end
+	end
+	coreGuiDrop.Text = selectedCoreGuiName
+	playerGuiDrop.Text = selectedPlayerGuiName
+end
+
+local function cycleDropdown(btn, list, current)
+	local idx = 1
+	for i, name in ipairs(list) do
+		if name == current then idx = i break end
+	end
+	idx = (idx % #list) + 1
+	btn.Text = list[idx]
+	return list[idx]
+end
+
+coreGuiDrop.MouseButton1Click:Connect(function()
+	refreshGuiLists()
+	selectedCoreGuiName = cycleDropdown(coreGuiDrop, coreGuiList, selectedCoreGuiName)
+end)
+
+playerGuiDrop.MouseButton1Click:Connect(function()
+	refreshGuiLists()
+	selectedPlayerGuiName = cycleDropdown(playerGuiDrop, playerGuiList, selectedPlayerGuiName)
+end)
+
+local function setProjectRoot(gui)
+	if not gui then return end
+	-- keep previous, just switch focus
+	projectGui = gui
+	selected = nil
+	destroyBoundingBox()
+	clearAlignmentLines()
+	refreshExplorer()
+	selectInstance(projectGui)
+	explorerWindow.Visible = true
+	propertiesWindow.Visible = true
+end
+
+modGuiApplyBtn.MouseButton1Click:Connect(function()
+	modGuiWindow.Visible = false
+	-- Player GUI takes priority over CoreGui
+	if selectedPlayerGuiName and selectedPlayerGuiName ~= "none" then
+		local gui = PlayerGui:FindFirstChild(selectedPlayerGuiName)
+		if gui then
+			setProjectRoot(gui)
+			editingExternalGui = gui
+		end
+	elseif selectedCoreGuiName and selectedCoreGuiName ~= "none" then
+		pcall(function()
+			local CoreGui = game:GetService("CoreGui")
+			local gui = CoreGui:FindFirstChild(selectedCoreGuiName)
+			if gui then
+				setProjectRoot(gui)
+				editingExternalGui = gui
+			end
+		end)
+	end
+end)
+
+modGuiCloseBtn.MouseButton1Click:Connect(function()
+	modGuiWindow.Visible = false
+end)
+
+-- Wire mod gui toggle
+if modGuiClick then
+	modGuiClick.MouseButton1Click:Connect(function()
+		modGuiEnabled = not modGuiEnabled
+		modGuiTrack.BackgroundColor3 = modGuiEnabled and THEME.Accent or THEME.Button
+		modGuiKnob.Position = modGuiEnabled and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
+		if modGuiEnabled then
+			refreshGuiLists()
+			modGuiWindow.Visible = true
+		else
+			modGuiWindow.Visible = false
+			if userProjectGui and userProjectGui.Parent then
+				setProjectRoot(userProjectGui)
+			end
+		end
+	end)
+end
+end -- do (MOD GUI GAME)
+
+
+-------------------------------------------------
+-- INIT
+-------------------------------------------------
+loadAutosaveIfExists()
+selectInstance(projectGui)
+refreshExplorer()
